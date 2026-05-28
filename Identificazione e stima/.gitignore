@@ -1,0 +1,14 @@
+# File temporanei e di autosalvataggio di MATLAB
+*.asv
+*~
+*.bak
+
+# Cache e file generati da Simulink (I PIÙ IMPORTANTI DA BLOCCARE)
+slprj/
+*.slxc
+sfprj/
+
+# File compilati e crash log
+*.mex*
+matlab_crash_dump.*
+*.log
