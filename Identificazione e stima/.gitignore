@@ -2,6 +2,7 @@
 *.asv
 *~
 *.bak
+*.autosave
 
 # Cache e file generati da Simulink (I PIÙ IMPORTANTI DA BLOCCARE)
 slprj/
