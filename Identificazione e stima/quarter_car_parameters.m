@@ -29,3 +29,28 @@ params.v   = 10;     % velocità veicolo 36 km/h
 params.f   = 3;      % frequenza sinusoide [Hz] (vicino alla risonanza di ms)
 params.t0  = 1.0;    % istante gradino [s]
 params.tau = 0.05;   % tempo di salita gradino [s]
+
+
+%% Inizializzazione 
+%Tempo di campionamento (il più veloce - 100Hz) 
+parameters.dt_ekf=0.01; 
+
+% Stato inziale 
+% x0_hat=[0 ; 0; 0; 0]; 
+% 
+% % Incertezza iniziale 
+% P0 = eye(4)*10;
+
+% Covarianza del Rumore di Processo (Q) 
+parameters.Q= 10; 
+
+parameters.R_imu = 3.5e-5;
+parameters.R_lc = 5.05;
+
+
+
+
+
+
+
+
