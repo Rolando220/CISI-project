@@ -42,7 +42,7 @@ parameters.dt_ekf=0.01;
 % P0 = eye(4)*10;
 
 % Covarianza del Rumore di Processo (Q) 
-parameters.Q= 10; 
+parameters.Q= 1e-4; 
 
 parameters.R_imu = 3.5e-5;
 parameters.R_lc = 5.05;
