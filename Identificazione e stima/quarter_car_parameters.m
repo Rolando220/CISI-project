@@ -20,6 +20,8 @@ tau_2 = 0.010;
 
 %% Disturbo strada 
 
+%parametri 
+
 % Parametri 
 params.A   = 0.05;   % altezza bump 5 cm
 params.L   = 0.5;    % lunghezza bump 50 cm
