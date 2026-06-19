@@ -23,10 +23,10 @@ tau_2 = 0.010;
 %parametri 
 
 % Parametri 
-params.A   = 0.05;   % altezza bump 5 cm
+params.A   = 0.015;   % altezza bump 1.5 cm
 params.L   = 0.5;    % lunghezza bump 50 cm
 params.v   = 10;     % velocità veicolo 36 km/h
-params.f   = 3;      % frequenza sinusoide [Hz] (vicino alla risonanza di ms)
+params.f   = 3;      % frequenza sinusoide [Hz] 
 params.t0  = 1.0;    % istante gradino [s]
 params.tau = 0.05;   % tempo di salita gradino [s]
 
@@ -42,7 +42,7 @@ parameters.dt_ekf=0.01;
 % P0 = eye(4)*10;
 
 % Covarianza del Rumore di Processo (Q) 
-parameters.Q= 10; 
+parameters.Q= 0.1; 
 
 parameters.R_imu = 0.01; 
 
