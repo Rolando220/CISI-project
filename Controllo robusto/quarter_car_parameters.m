@@ -23,12 +23,13 @@ tau_2 = 0.010;
 %parametri 
 
 % Parametri 
-params.A   = 0.20;   % altezza bump 1.5 cm
-params.L   = 0.5;    % lunghezza bump 50 cm
-params.v   = 10;     % velocità veicolo 36 km/h
-params.f   = 3;      % frequenza sinusoide [Hz] (tipica frequenza di risonanza della ms (usiamo per stimolare la dinamica del confort a bordo) 
-params.t0  = 1.0;    % istante gradino [s]
-params.tau = 0.05;   % tempo di salita gradino [s]
+% Parametri Strada
+params.A   = 0.05;   % altezza bump 5 cm (non 20!)
+params.L   = 1.0;    % lunghezza bump 1 m
+params.v   = 30/3.6; % velocità veicolo 30 km/h in m/s
+params.f   = 2;      % frequenza sinusoide [Hz]
+params.t0  = 1.0;    % istante inizio ostacolo [s]
+params.tau = 0.03;   % tempo di salita gradino [s]
 
 
 
