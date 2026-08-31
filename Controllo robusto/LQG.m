@@ -49,7 +49,7 @@ G_a2_ss.InputName = 'u2_cmd';  G_a2_ss.OutputName = 'u2_force';
 %% 4. CREAZIONE DEL PLANT AUMENTATO NOMINALE
 Sys_Nom = connect(Plant, G_a1_ss, G_a2_ss, {'u1_cmd', 'u2_cmd', 'w_dist'}, {'zs_ddot', 'delta_s', 'delta_t', 'zu_ddot'});
 
-%% 5. PREPARAZIONE MATRICI PER SINTESI LQG (SOLO 2 IMU)
+%% 5. PREPARAZIONE MATRICI PER SINTESI LQG 
 A_nom = Sys_Nom.A;
 B_tot = Sys_Nom.B;
 C_tot = Sys_Nom.C;
@@ -58,41 +58,62 @@ D_tot = Sys_Nom.D;
 B_u = B_tot(:, 1:2);
 B_w = B_tot(:, 3);
 
-% SELEZIONIAMO SOLO LE 2 IMU (Righe 1 e 4 di C_tot)
-idx_meas = [1, 4];
+
+idx_meas = [1, 2, 4]; % 1=zs_ddot, 2=delta_s, 4=zu_ddot
 C_y = C_tot(idx_meas, :);
 D_yu = D_tot(idx_meas, 1:2);
 D_yw = D_tot(idx_meas, 3);
 
+
 n = size(A_nom, 1); % 9 stati
 m = size(B_u, 2);   % 2 ingressi
-p = size(C_y, 1);   % 2 uscite misurate
+p = size(C_y, 1);   % Ora p = 3 uscite misurate
 
 %% 6. SINTESI CONTROLLO LQG (SENZA INTEGRATORE)
-% 6.1 LQR: Feedback di stato
+% % 6.1 LQR: Feedback di stato
 Q_lqr = zeros(n, n);
-Q_lqr(1,1) = 1;      % delta_s (Corsa Sospensione): Peso bassissimo. L'ammortizzatore deve essere libero di lavorare
-Q_lqr(2,2) = 5e5;    % zs_dot (Comfort): Peso alto. Smorza la velocità verticale della carrozzeria
-Q_lqr(3,3) = 5e6;    % delta_t (Road Holding): Peso altissimo. Mantiene lo pneumatico schiacciato a terra
-Q_lqr(4,4) = 1e3;    % zu_dot (Wheel Hop): Peso basso. Frena le vibrazioni libere della ruota
+Q_lqr(1,1) = 1e3;    % delta_s (Corsa Sospensione): Peso bassissimo. L'ammortizzatore deve essere libero di lavorare
+Q_lqr(2,2) = 2e5;    % zs_dot (Comfort): Peso alto. Smorza la velocità verticale della carrozzeria
+Q_lqr(3,3) = 8e4;    % delta_t (Road Holding): Peso altissimo. Mantiene lo pneumatico schiacciato a terra
+Q_lqr(4,4) = 1e1;    % zu_dot (Wheel Hop): Peso basso. Frena le vibrazioni libere della ruota
 % NOTA: Gli stati da 5 a 9 (ritardi e dinamica attuatori) rimangono a zero.
 
 
-R_lqr = eye(m) * 1e-3; 
+R_lqr = zeros(m,m); 
+R_lqr(1,1)=5e-4;    
+R_lqr(2,2)=1e-4;    
+
+% 6.1 LQR: Feedback di stato (Metodo di Bryson)
+% delta_s_max = 0.05;  % 5 cm max corsa sospensione
+% zs_dot_max  = 0.2;   % 0.2 m/s max velocita verticale cassa (comfort)
+% delta_t_max = 0.01;  % 1 cm deflessione max pneumatico (road holding)
+% zu_dot_max  = 1.0;   % 1 m/s max velocita ruota
+% 
+% Q_lqr = zeros(n, n);
+% Q_lqr(1,1) = 1 / (delta_s_max^2);
+% Q_lqr(2,2) = 1 / (zs_dot_max^2);
+% Q_lqr(3,3) = 1 / (delta_t_max^2);
+% Q_lqr(4,4) = 1 / (zu_dot_max^2);
+% 
+% u_max = 2000; % 2000 N max forza attuatore
+% R_lqr = eye(m) * (1 / (u_max^2)); 
+
 K_lqr = lqr(A_nom, B_u, Q_lqr, R_lqr);
+
 
 % 6.2 KALMAN FILTER (Osservatore a 2 sensori)
 W_kf = 0.01;              
-V_kf = diag([0.001, 0.001]); % Matrice 2x2 per le due IMU
+%V_kf = diag([0.001, 0.001]); % Matrice 2x2 per le due IMU
+V_kf = diag([0.001, 0.001, 0.001]);
 Sys_Est = ss(A_nom, [B_u, B_w], C_y, [D_yu, D_yw]);
 [kf_sys, K_e, P_est] = kalman(Sys_Est, W_kf, V_kf);
 
 % 6.3 ASSEMBLAGGIO LQG BASE
 Ac = A_nom - B_u * K_lqr - K_e * C_y + K_e * D_yu * K_lqr;
 K_LQG_noInt = ss(Ac, K_e, -K_lqr, zeros(m, p));
-K_LQG_noInt.InputName = {'zs_ddot', 'zu_ddot'}; 
+K_LQG_noInt.InputName = {'zs_ddot', 'delta_s','zu_ddot'}; 
 K_LQG_noInt.OutputName = {'u1_cmd', 'u2_cmd'};
-disp('Controllore LQG Base (2 IMU) assemblato.');
+disp('Controllore LQG Base assemblato.');
 
 %% 7. SINTESI CONTROLLO LQG CON AZIONE INTEGRALE (Su Stima Kalman)
 C_int = C_tot(2, :); % Vogliamo integrare delta_s
@@ -104,32 +125,28 @@ B_aug = [B_u;
          
 % 7.2 Pesi LQR Aumentati (Forma Estesa)
 Q_aug = zeros(n+1, n+1);
-Q_aug(1,1)   = 1;    % delta_s (Corsa Sospensione): Aiuta leggermente l'integratore nel transitorio
-Q_aug(2,2)   = 5e5;    % zs_dot (Comfort): Smorza la velocità della carrozzeria
-Q_aug(3,3)   = 5e6;    % delta_t (Road Holding): Mantiene la ruota incollata a terra
-Q_aug(4,4)   = 1e3;    % zu_dot (Wheel Hop): Smorza i saltellamenti della ruota
-% Gli stati da 5 a 9 (dinamica attuatori e ritardi di Padé) rimangono a zero.
+
+Q_aug(1:n, 1:n) = Q_lqr;
+
+% Peso sullo STATO INTEGRALE (int_delta_s)
+Q_aug(n+1, n+1) =1e5;
 
 
 
-Q_aug(10,10) = 1e6;    % STATO INTEGRALE (int_delta_s): Più è alto, più l'auto cerca di tornare a delta_s = 0 velocemente.
-
-R_aug = eye(m) * 1e-3; % Sforzo di controllo (Costo energia attuatori)
-
+R_aug = R_lqr; % Sforzo di controllo (Costo energia attuatori)
 K_lqr_aug = lqr(A_aug, B_aug, Q_aug, R_aug);
 K_r = K_lqr_aug(:, 1:n);  
 K_i = K_lqr_aug(:, n+1);  
 
-% Assemblaggio Controllore (L'integratore usa la STIMA del Kalman C_int*x_hat)
+% Assemblaggio Controllore (L'integratore usa la MISURA REALE y_meas(2))
 Ac_int = [ (A_nom - B_u*K_r - K_e*C_y + K_e*D_yu*K_r),  (-B_u*K_i + K_e*D_yu*K_i);
-           C_int,                                       0 ]; 
+           zeros(1, n),                                 0 ]; 
 Bc_int = [ K_e;
-           zeros(1, p) ]; 
+           0, 1, 0 ]; % <--- Ecco la magia: prende il sensore delta_s puro!
 
 K_LQG_Int = ss(Ac_int, Bc_int, [-K_r, -K_i], zeros(m, p));
-K_LQG_Int.InputName = {'zs_ddot', 'zu_ddot'}; 
+K_LQG_Int.InputName = {'zs_ddot','delta_s', 'zu_ddot'}; 
 K_LQG_Int.OutputName = {'u1_cmd', 'u2_cmd'};
-disp('Controllore LQG Integrale (2 IMU) assemblato.');
 
 %% 8. CHIUSURA ANELLI LINEARI E VERIFICA STABILITA'
 CL_sys_base = connect(Sys_Nom, K_LQG_noInt, 'w_dist', {'zs_ddot', 'delta_s', 'delta_t', 'zu_ddot'});
@@ -141,20 +158,44 @@ else
     disp('-> ERRORE: Almeno un sistema chiuso è instabile.');
 end
 
-%% 9. ANALISI IN FREQUENZA E ROBUSTEZZA (Dominio Frequenza)
+
+% --- 9. ANALISI IN FREQUENZA E ROBUSTEZZA (Dominio Frequenza) ---
 disp('--- Generazione Grafici di Bode e Margini di Robustezza ---');
 
 % Attenuazione Disturbi (w_dist -> zs_ddot)
 G_passiva = Sys_Nom('zs_ddot', 'w_dist');
 G_attiva  = CL_sys_int('zs_ddot', 'w_dist');
 
-figure('Name', 'Attenuazione Disturbi (Bode)');
-bode(G_passiva, 'b', G_attiva, 'r', {0.1, 1000}); grid on;
-legend('Passiva (Senza Controllo)', 'Attiva (LQG Integrale)', 'Location', 'best');
-title('Trasmissibilita Disturbo Stradale: w \rightarrow zs\_ddot'); 
+% 1. Estrazione dati per calcolare l'attenuazione matematica
+w_vec = logspace(-1, 3, 1000); % Vettore di frequenze
+[mag_p, ~, ~] = bode(G_passiva, w_vec);
+[mag_a, ~, ~] = bode(G_attiva, w_vec);
+
+mag_p_dB = 20*log10(squeeze(mag_p));
+mag_a_dB = 20*log10(squeeze(mag_a));
+
+% Troviamo il picco di risonanza della cassa (tipicamente tra 5 e 15 rad/s)
+idx_range = find(w_vec > 5 & w_vec < 15);
+[~, max_local_idx] = max(mag_p_dB(idx_range));
+peak_idx = idx_range(max_local_idx);
+
+freq_picco = w_vec(peak_idx);
+att_picco_dB = mag_p_dB(peak_idx) - mag_a_dB(peak_idx); % Differenza in dB
+
+% 2. Plot del solo Modulo (bodemag)
+figure('Name', 'Attenuazione Disturbi (Bode Ampiezza)');
+bodemag(G_passiva, 'b', G_attiva, 'r', {0.1, 1000}); 
+grid on;
+legend('Passiva (Senza Controllo)', 'Attiva (LQG Integrale)', 'Location', 'southwest');
+title('Amplificazione Disturbo Stradale: Modulo w \rightarrow zs\_ddot'); 
+
+% 3. Aggiunta etichetta testuale automatica con il miglioramento
+% testo_risultato = sprintf('Alla risonanza della cassa (%.1f rad/s):\nAttenuazione attiva = %.1f dB', freq_picco, att_picco_dB);
+% annotation('textbox', [0.5, 0.15, 0.35, 0.1], 'String', testo_risultato, ...
+%     'FitBoxToText', 'on', 'BackgroundColor', 'w', 'EdgeColor', 'k', 'FontWeight', 'bold');
 
 % Margini di Robustezza
-G_meas = Sys_Nom({'zs_ddot', 'zu_ddot'}, {'u1_cmd', 'u2_cmd'}); 
+G_meas = Sys_Nom({'zs_ddot', 'delta_s', 'zu_ddot'}, {'u1_cmd', 'u2_cmd'});
 L_loop = - (K_LQG_Int * G_meas); 
 
 figure('Name', 'Margini Robustezza - u1');
@@ -162,3 +203,6 @@ margin(L_loop(1,1)); title('Margini di Robustezza - Attuatore u_1 (Carrozzeria)'
 
 figure('Name', 'Margini Robustezza - u2');
 margin(L_loop(2,2)); title('Margini di Robustezza - Attuatore u_2 (Ruota)'); grid on;
+
+
+

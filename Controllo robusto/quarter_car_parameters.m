@@ -17,6 +17,11 @@ tau_1 = 0.005;
 tau_a = 0.025;       
 tau_2 = 0.010;       
 
+%% Stato inziale 
+x0_delta_s=0;
+x0_zs_dot=0; 
+x0_delta_t=0; 
+x0_zu_dot=0; 
 
 %% Disturbo strada 
 

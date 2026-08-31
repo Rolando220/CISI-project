@@ -29,29 +29,32 @@ subplot(2,2,1);
 plot(t, zs_pass, 'k', t, zs_noInt, 'b', t, zs_Int, 'r', 'LineWidth', 1.5);
 title('Comfort: Accelerazione Carrozzeria (zs_{ddot})');
 ylabel('[m/s^2]'); grid on;
-legend('Passivo', 'LQG Base', 'LQG Integrale', 'Location', 'best');
+legend('Passivo', 'LQG no Int', 'LQG Integrale', 'Location', 'best');
 
 % 2. Road Holding (delta_t)
+%figure('Name', 'Confronto Passivo vs LQG senza Int. vs LQG con Int.', 'Position', [100, 100, 1200, 800]);
 subplot(2,2,2);
 plot(t, dt_pass, 'k', t, dt_noInt, 'b', t, dt_Int, 'r', 'LineWidth', 1.5);
 title('Road Holding: Deformazione Pneumatico (\delta_t)');
 ylabel('[m]'); grid on;
-legend('Passivo', 'LQG Base', 'LQG Integrale', 'Location', 'best');
+legend('Passivo', 'LQG no Int', 'LQG Integrale', 'Location', 'best');
 
 % 3. Corsa Sospensione (delta_s)
 subplot(2,2,3);
+%figure('Name', 'Confronto Passivo vs LQG senza Int. vs LQG con Int.', 'Position', [100, 100, 1200, 800]);
 plot(t, ds_pass, 'k', t, ds_noInt, 'b', t, ds_Int, 'r', 'LineWidth', 1.5);
 title('Corsa Sospensione (\delta_s)');
 xlabel('Tempo [s]'); ylabel('[m]'); grid on;
-legend('Passivo', 'LQG Base', 'LQG Integrale', 'Location', 'best');
+legend('Passivo', 'LQG no Int', 'LQG Integrale', 'Location', 'best');
 
 % 4. Control Effort (Forze Attuatori u1, u2)
 subplot(2,2,4);
+%figure('Name', 'Confronto Passivo vs LQG senza Int. vs LQG con Int.', 'Position', [100, 100, 1200, 800]);
 % Uso linee tratteggiate per il base e continue per l'integrale per distinguerle
 plot(t, u1_noInt, 'b--', t, u1_Int, 'b-', 'LineWidth', 1.5); hold on;
 plot(t, u2_noInt, 'r--', t, u2_Int, 'r-', 'LineWidth', 1.5);
 title('Control Effort: Forze Attuatori (u_1, u_2)');
-legend('u_1 (Base)', 'u_1 (Integrale)', 'u_2 (Base)', 'u_2 (Integrale)', 'Location', 'best');
+legend('u_1 (no Int)', 'u_1 (Integrale)', 'u_2 (no Int)', 'u_2 (Integrale)', 'Location', 'best');
 xlabel('Tempo [s]'); ylabel('[N]'); grid on;
 
 %% --- 2. STAMPA DATI STATISTICI (KPI) A CONFRONTO ---
