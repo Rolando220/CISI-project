@@ -14,3 +14,6 @@ sfprj/
 *.mex*
 matlab_crash_dump.*
 *.log
+
+# Cartella immagini
+img/
