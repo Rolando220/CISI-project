@@ -105,12 +105,12 @@ G_d = 0.1 / (s/(2*pi*5) + 1); % Frequenza di taglio a 5 Hz (~30 rad/s)
 G_d.InputName = 'w_in';       % Ingresso esogeno matematico (rumore bianco)
 G_d.OutputName = 'w_dist';    % Uscita fisica (velocità della strada che entra nel Plant)
 
-% 3.2 Peso sui Rumori di Misura (Gn)
-% Il rumore dei sensori IMU si concentra ad alta frequenza.
-% Usiamo un High-Pass Filter (HPF) per sporcare le misurazioni.
-G_n = 0.01 * (s/(2*pi*1) + 1) / (s/(2*pi*100) + 1); 
-G_n.InputName = 'noise_in';
-G_n.OutputName = 'n_sens';
+% % 3.2 Peso sui Rumori di Misura (Gn)
+% % Il rumore dei sensori IMU si concentra ad alta frequenza.
+% % Usiamo un High-Pass Filter (HPF) per sporcare le misurazioni.
+% G_n = 0.01 * (s/(2*pi*1) + 1) / (s/(2*pi*100) + 1); 
+% G_n.InputName = 'noise_in';
+% G_n.OutputName = 'n_sens';
 
 %% --- 4. INCERTEZZA CONCENTRATA (MOLTIPLICATIVA IN INGRESSO) ---
 % Definiamo il blocco Delta_L matematico normalizzato (||Delta||_inf <= 1)
@@ -132,11 +132,10 @@ Sum_IMU1 = sumblk('y_imu1_meas = zs_ddot + n_sens');
 Sum_IMU2 = sumblk('y_imu2_meas = zu_ddot + n_sens');
 
 % Creiamo il Processo Esteso (N-Delta) connettendo tutti i blocchi
-% Input del sistema esteso: [w_in; noise_in; u1_cmd; u2_cmd]
-% Output del sistema esteso: [zs_ddot; delta_t; y_imu1_meas; y_imu2_meas]
-% --- NELLA SEZIONE 5 AGGIORNA IL COMANDO CONNECT COSI': ---
-P_esteso = connect(Plant_unc, Actuator1_unc, Actuator2_unc, G_d, G_n, Sum_IMU1, Sum_IMU2, ...
-                   {'w_in', 'noise_in', 'u1_cmd', 'u2_cmd'}, ...
-                   {'zs_ddot', 'delta_s', 'delta_t', 'y_imu1_meas', 'y_imu2_meas'});
+% Input del sistema esteso: [w_in; u1_cmd; u2_cmd]
+% Output del sistema esteso: [zs_ddot; delta_s; delt_t; zu_ddot]
+P_esteso = connect(Plant_unc, Actuator1_unc, Actuator2_unc, G_d, ...
+                   {'w_in', 'u1_cmd', 'u2_cmd'}, ...
+                   {'zs_ddot', 'delta_s', 'delta_t', 'zu_ddot'});
 
 disp('Processo Esteso Incerto assemblato con successo!');
