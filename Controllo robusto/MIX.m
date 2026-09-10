@@ -27,10 +27,10 @@ B = [ 0,       0,      0;
       0,       0,     -1;
      -1/m_u,   1/m_u,  b_t/m_u ];
 
-C = [ -k_s/m_s, -b_s/m_s, 0, b_s/m_s;   % y1: zs_ddot (Comfort)
-       1, 0, 0, 0;                      % y2: delta_s (Livellamento)
-       0, 0, 1, 0;                      % y3: delta_t (Tenuta strada)
-       k_s/m_u, b_s/m_u, -k_t/m_u, -(b_s+b_t)/m_u ]; % y4: zu_ddot
+C = [ -k_s/m_s, -b_s/m_s, 0, b_s/m_s;                   % y1: zs_ddot (Comfort)
+       1, 0, 0, 0;                                      % y2: delta_s (Livellamento)
+       0, 0, 1, 0;                                      % y3: delta_t (Tenuta strada)
+       k_s/m_u, b_s/m_u, -k_t/m_u, -(b_s+b_t)/m_u ];    % y4: zu_ddot
 
 D = [ 1/m_s,   0,      0;
       0,       0,      0;
@@ -59,18 +59,20 @@ M = 2.0;
 % L'accelerazione a regime è SEMPRE zero. Il peso deve essere zero a w=0, 
 % altrimenti l'algoritmo impazzisce cercando di attenuare un segnale già nullo!
 % Usiamo un passa-banda centrato tra 5 e 50 rad/s.
-wP1 = 8 * (s / (s + 5)) * (50 / (s + 50)); 
+wP1 = 1.2 * (s / (s + 5)) * (50 / (s + 50)); 
 
 % 2. Autolivellamento (delta_s): Rallentiamo la banda a 0.1 rad/s.
 % Se gli chiedi di livellare l'auto in 1 secondo (wB=1), richiede 100.000 N.
 % Con wB = 0.1 (circa 10 secondi), lo sforzo crolla nei limiti fisici.
-A_track = 1e-4; 
-wB_track = 0.05; 
-wP2 = (s/M + wB_track) / (s + wB_track*A_track);
+% A_track = 1e-4; 
+% wB_track = 0.05; 
+% wP2 = (s/M + wB_track) / (s + wB_track*A_track);
+wP2=0.01; 
 
 % 3. Tenuta di Strada (delta_t)
+% Banda passante da 15 a 20 rad/s 
 A_road = 10.0;  
-wB_road = 20.0; % Abbassato a 20 rad/s per evitare conflitti con il comfort
+wB_road = 20.0; 
 wP3 = (s/M + wB_road) / (s + wB_road*A_road);
 
 % 4. Ruota (zu_ddot): Peso costante di relax
@@ -79,13 +81,13 @@ wP4 = 0.01;
 WP = blkdiag(wP1, wP2, wP3, wP4);
 
 % Sforzo di controllo (Wu): limite fisso a 30000 N (scalato)
-wu = 1/50000;
+wu = 1/40000;
 Wu = blkdiag(wu, wu);
 
 
 % --- ROBUSTEZZA (WT) ---
 % e garantire la Stabilità Robusta (RS) contro le incertezze.
-wT_base = (s + 50) / (0.01*s + 100); 
+wT_base = 2 * (s + 20) / (0.01*s + 200);
 WT = blkdiag(wT_base, wT_base, wT_base, wT_base);
 
 
@@ -205,34 +207,36 @@ end
 
 %% =========================================================
 %% H-INFINITY CON STRUTTURA FISSA (PI Industriale Realistico)
+%% Confronto con mixsyn 
 %% =========================================================
 fprintf('\n=== Sintesi H-infinity con PI Strutturato ===\n');
 
-% 1. IL GUINZAGLIO: Limite rigoroso a 3000 N 
-Wu_strict = blkdiag(1/3000, 1/3000);
+% 1. IL GUINZAGLIO: 
+% ATTENZIONE: Per fare un confronto leale con mixsyn, usa lo stesso 
+% limite che hai messo in Wu per mixsyn (es. 1/45000). 
+Wu_strict = blkdiag(1/45000, 1/45000); 
 P_gen_struct = augw(G_uy, WP, Wu_strict, WT);
 
-% 2. COSTRUZIONE DELLA STRUTTURA "ACCECATA" (Solo Posizioni)
+% 2. COSTRUZIONE DELLA STRUTTURA (Focus su Dinamica e Comfort)
 
-% A. Proporzionale: Matrice 2x2 (2 attuatori x 2 sensori di posizione)
-Kp_base = realp('Kp_base', zeros(2,2));
+% A. Proporzionale: Matrice 2x4 (2 attuatori x 4 sensori)
+% Togliamo il "Selector_P" che lo accecava. Ora lasciamo che la matrice 
+% Kp legga tutte le 4 variabili: y = [zs_ddot, delta_s, delta_t, zu_ddot]
+Kp = realp('Kp', zeros(2,4)); 
 
-% La moltiplichiamo per una matrice che "spegne" le accelerazioni (col 1 e 4)
-% e lascia passare solo delta_s (col 2) e delta_t (col 3)
-Selector_P = [0, 1, 0, 0; 
-              0, 0, 1, 0];
-Kp = Kp_base * Selector_P; % Kp finale diventa 2x4 ma con zeri rigidi su acc.
-
-% B. Integrale: Solo per l'autolivellamento (delta_s)
+% B. Integrale: Spostato sull'accelerazione della cassa (zs_ddot)
+% MAGIA FISICA: Integrare l'accelerazione in Simulink genera la velocità. 
+% Questa azione I equivale a uno smorzatore viscoso "Skyhook" ideale!
 Ki_base = realp('Ki_base', [0; 0]); 
-Selector_I = [0, 1, 0, 0]; % Accende solo il canale 2 (delta_s)
+Selector_I = [1, 0, 0, 0]; % Accende SOLO il canale 1 (zs_ddot), spegne il resto
 I_action = (Ki_base / (s + 0.001)) * Selector_I;
 
 % C. Assemblaggio del controllore
 K_custom = Kp + I_action;
 
 % D. Filtro Passa-Basso a 50 rad/s (~8 Hz) per simulare il ritardo fisico degli attuatori
-wf = 50; 
+% Questo filtro è vitale per garantire la Robust Stability (RS) nella mu-analisi
+wf = 100; 
 LPF_single = tf(wf, [1, wf]);
 LPF_matrix = blkdiag(LPF_single, LPF_single);
 
@@ -251,6 +255,63 @@ K_PID_tuned = minreal(ss(replaceBlock(K_struct, tuned_params)));
 
 fprintf('\nNorma H-inf (PI Strutturato) -> gamma = %.4f\n', gamma_pid);
 
+
+%% =========================================================
+%% H-INFINITY CON STRUTTURA FISSA (PI per Autolivellamento)
+%% =========================================================
+fprintf('\n=== Sintesi H-infinity con PI Strutturato (Autolivellamento) ===\n');
+
+% 1. DEFINIZIONE PESI SPECIFICI PER IL LIVELLAMENTO
+% Autolivellamento (delta_s): Rallentiamo la banda a 0.05 rad/s.
+% Se gli chiedi di livellare l'auto in 1 secondo (wB=1), richiede 100.000 N.
+% Con wB = 0.05 (circa 20 secondi), lo sforzo crolla nei limiti fisici.
+A_track = 1e-4; 
+wB_track = 0.05; 
+wP2_liv = (s/M + wB_track) / (s + wB_track*A_track);
+
+% Assembliamo il nuovo peso globale (mantenendo gli altri inalterati)
+WP_liv = blkdiag(wP1, wP2_liv, wP3, wP4);
+
+% Creazione dell'impianto generalizzato con i pesi di livellamento
+P_gen_liv = augw(G_uy, WP_liv, Wu_strict, WT);
+
+% 2. COSTRUZIONE DELLA STRUTTURA "ACCECATA" (Solo Posizioni)
+% A. Proporzionale: Matrice 2x2 (2 attuatori x 2 sensori di posizione)
+Kp_liv_base = realp('Kp_liv_base', zeros(2,2));
+
+% Moltiplichiamo per una matrice che "spegne" le accelerazioni (col 1 e 4)
+% e lascia passare solo delta_s (col 2) e delta_t (col 3)
+Selector_P_liv = [0, 1, 0, 0; 
+                  0, 0, 1, 0];
+Kp_liv = Kp_liv_base * Selector_P_liv; 
+
+% B. Integrale: Solo per l'autolivellamento (delta_s)
+Ki_liv_base = realp('Ki_liv_base', [0; 0]); 
+Selector_I_liv = [0, 1, 0, 0]; % Accende solo il canale 2 (delta_s)
+I_action_liv = (Ki_liv_base / (s + 0.001)) * Selector_I_liv;
+
+% C. Assemblaggio del controllore
+K_custom_liv = Kp_liv + I_action_liv;
+
+% D. Filtro Passa-Basso a 50 rad/s (~8 Hz) 
+wf_liv = 50; 
+LPF_single_liv = tf(wf_liv, [1, wf_liv]);
+LPF_matrix_liv = blkdiag(LPF_single_liv, LPF_single_liv);
+
+K_struct_liv = LPF_matrix_liv * K_custom_liv;
+
+% 3. OTTIMIZZAZIONE
+CL0_liv = lft(P_gen_liv, K_struct_liv);
+
+rng('default');
+opt_liv = hinfstructOptions('Display', 'final', 'RandomStart', 10);
+[CL_pid_liv, gamma_pid_liv, info_pid_liv] = hinfstruct(CL0_liv, opt_liv);
+
+% Estrazione
+tuned_params_liv = getBlockValue(CL_pid_liv);
+K_PID_tuned_liv = minreal(ss(replaceBlock(K_struct_liv, tuned_params_liv)));
+
+fprintf('\nNorma H-inf (PI Strutturato Autolivellamento) -> gamma = %.4f\n', gamma_pid_liv);
 
 
 %% =========================================================
