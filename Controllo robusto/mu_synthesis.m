@@ -34,22 +34,44 @@ D = [ 1/m_s,   0,      0;
       0,       0,      0;
      -1/m_u,   1/m_u,  b_t/m_u ];
 
-% --- 2. DEFINIZIONE DEI PESI (Da MixedSensitivity.m) ---
-s = tf('s');
-wP_track = (s/2.0 + 5) / (s + 5*1e-3); 
+%% =========================================================
+%  PERFORMANCE AND CONTROL WEIGHTS
+%% =========================================================
+M = 2.0; 
 
-% Filtro per il Comfort (Accelerazione zs_ddot)
-w_low = 2*pi*1;  w_high = 2*pi*10;
-Gain_acc = 0.1; 
-wP_acc = Gain_acc * ( (s/w_low) / (s/w_low + 1) ) * ( 1 / (s/w_high + 1) );
+% 1. Comfort (zs_ddot): IL SEGRETO E' IL FILTRO PASSA-BANDA. 
+% L'accelerazione a regime è SEMPRE zero. Il peso deve essere zero a w=0, 
+% altrimenti l'algoritmo impazzisce cercando di attenuare un segnale già nullo!
+% Usiamo un passa-banda centrato tra 5 e 50 rad/s.
+wP1 = 1.2 * (s / (s + 5)) * (50 / (s + 50)); 
 
-wP_relax = 0.1;
-WP = blkdiag(wP_acc, wP_track, wP_relax, wP_relax);
+% 2. Autolivellamento (delta_s): Rallentiamo la banda a 0.1 rad/s.
+% Se gli chiedi di livellare l'auto in 1 secondo (wB=1), richiede 100.000 N.
+% Con wB = 0.1 (circa 10 secondi), lo sforzo crolla nei limiti fisici.
+% A_track = 1e-4; 
+% wB_track = 0.05; 
+% wP2 = (s/M + wB_track) / (s + wB_track*A_track);
+wP2=0.01; 
 
-wu_val = 0.05 / 3000; 
-Wu = blkdiag(wu_val, wu_val);
+% 3. Tenuta di Strada (delta_t)
+% Banda passante da 15 a 20 rad/s 
+A_road = 10.0;  
+wB_road = 20.0; 
+wP3 = (s/M + wB_road) / (s + wB_road*A_road);
 
-wT_base = (s + 50) / (0.01*s + 100); 
+% 4. Ruota (zu_ddot): Peso costante di relax
+wP4 = 0.01;
+
+WP = blkdiag(wP1, wP2, wP3, wP4);
+
+% Sforzo di controllo (Wu): limite fisso a 30000 N (scalato)
+wu = 1/40000;
+Wu = blkdiag(wu, wu);
+
+
+% --- ROBUSTEZZA (WT) ---
+% e garantire la Stabilità Robusta (RS) contro le incertezze.
+wT_base = 2 * (s + 20) / (0.01*s + 200);
 WT = blkdiag(wT_base, wT_base, wT_base, wT_base);
 
 % --- 3. COSTRUZIONE GENERALIZED PLANT PER LA SINTESI ---
