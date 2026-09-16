@@ -2,9 +2,9 @@
 s = tf('s');
 
 % Parametri nominali attuatori
-tau_1_nom = 0.005; % 5 ms
-tau_2_nom = 0.010; % 10 ms
-omega_n1 = 80; zeta_1 = 0.7; tau_a = 0.025;
+tau_1_nom = parameters.tau_1; % 5 ms
+tau_2_nom = parameters.tau_2; % 10 ms
+omega_n1 = parameters.omega_n1; zeta_1 = parameters.zeta_1; tau_a = parameters.tau_a;
 
 % Creiamo un array di possibili ritardi (+/- 20%)
 tau_1_array = linspace(tau_1_nom*0.8, tau_1_nom*1.2, 10);
@@ -62,30 +62,32 @@ legend('Errore Impianti Perturbati', 'Filtro Peso W_{L2}');
 %% --- 2. MODELLAZIONE INCERTEZZE STRUTTURATE (PLANT) ---
 
 % Parametri nominali fissi
-m_u = 50;       
-k_t = 150000;   
-b_t = 150;      
+m_u = parameters.m_u;       
+k_t = parameters.kt;
+k_s0 = parameters.ks0;
+b_t = parameters.bt;
+b_s = parameters.bs;
 
 % Parametri Incerte Strutturate (Generano in automatico la forma LFT)
-m_s_unc  = ureal('m_s', 350, 'Percentage', 20);       
-k_s0_unc = ureal('k_s0', 20000, 'Percentage', 10);    
-b_s_unc  = ureal('b_s', 1500, 'Percentage', 10);      
+m_s_unc  = ureal('m_s', 350, 'Percentage', 6);       
+% k_s0_unc = ureal('k_s0', 20000, 'Percentage', 10);    
+% b_s_unc  = ureal('b_s', 1500, 'Percentage', 10);      
 
 % Costruzione Matrici (MATLAB riconosce che sono incerte)
 A_unc = [ 0,                    1,                0,                     -1;
-         -k_s0_unc/m_s_unc,    -b_s_unc/m_s_unc,  0,                      b_s_unc/m_s_unc;
+         -k_s0/m_s_unc,    -b_s/m_s_unc,  0,                      b_s/m_s_unc;
           0,                    0,                0,                      1;
-          k_s0_unc/m_u,         b_s_unc/m_u,     -k_t/m_u,               -(b_s_unc+b_t)/m_u ];
+          k_s0/m_u,         b_s/m_u,     -k_t/m_u,               -(b_s+b_t)/m_u ];
 
 B_unc = [ 0,          0,         0;
           1/m_s_unc,  0,         0;
           0,          0,        -1;
          -1/m_u,      1/m_u,     b_t/m_u ];
 
-C_unc = [ -k_s0_unc/m_s_unc, -b_s_unc/m_s_unc,  0,        b_s_unc/m_s_unc;   
+C_unc = [ -k_s0/m_s_unc, -b_s/m_s_unc,  0,        b_s/m_s_unc;   
            1,                 0,                0,        0;        
            0,                 0,                1,        0;        
-           k_s0_unc/m_u,      b_s_unc/m_u,     -k_t/m_u, -(b_s_unc+b_t)/m_u ]; 
+           k_s0/m_u,      b_s/m_u,     -k_t/m_u, -(b_s+b_t)/m_u ]; 
 
 D_unc = [ 1/m_s_unc,  0,         0;
           0,          0,         0;
