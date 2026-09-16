@@ -2,331 +2,167 @@
 %  MU-ANALYSIS PER SOSPENSIONE QUARTER-CAR
 %
 %  Questo script richiede che siano presenti nel workspace:
-%  - K_hinf (Il controllore sintetizzato)
+%  - K_mixsyn, K_hinf, K_PID_tuned (I controllori sintetizzati)
 %  - P_esteso (Il generalized plant incerto)
 %  - I pesi di performance (WP, Wu, WT) 
-%
-%   Si deve dunque lanciare uncertain_plant.m e MixeedSensitivity.m
 % =========================================================================
+clear Np* mu_*; % Pulizia preventiva delle variabili di loop
 
-
-%% MU_ANALISI MIXSYN
-fprintf('\n=========================================================\n');
-fprintf(' MU-ANALYSIS MIXSYN \n');
-fprintf('=========================================================\n');
-
-
-% N-DELTA STRUCTURE AND PERTURBED MODEL (Np)
-% Si inverte il segno del controllore per garantire la retroazione negativa (u = K * (-y) = -K * y)
-K_hinf_neg = -K_mixsyn;
-
-% etichette al controllore
-K_hinf_neg.u = {'zs_ddot', 'delta_s', 'delta_t', 'zu_ddot'}; 
-K_hinf_neg.y = {'u1_cmd', 'u2_cmd'};                             
-
-% Chiusura dell'anello 
-Np_unweighted = connect(P_esteso, K_hinf_neg, {'w_in'}, ...
-                        {'zs_ddot', 'delta_s', 'delta_t', 'zu_ddot', 'u1_cmd', 'u2_cmd'});
-
-
-% Pesi sulle sucite (esattamente come in MixedSensitivity) 
+% Pesi e Griglia di Frequenze condivisi
 W_perf = blkdiag(WP, Wu);
-Np = W_perf * Np_unweighted;
+omega = logspace(-1, 3, 100);
 
-omega = logspace(-1, 3, 100); % Griglia di frequenze [rad/s]
+%% MU-ANALISI 
+% La funzione esegui_mu_analisi restituisce le strutture Np necessarie per i plot
 
-% =========================================================================
-% NOMINAL STABILITY (NS)
-% Verifica che il sistema nominale (Delta = 0) sia stabile.
-N_nom = Np.NominalValue; % Estrae il sistema senza incertezze (Analisi di N11)
-poles_N = pole(N_nom);
-
-fprintf('NOMINAL STABILITY (NS)\n');
-fprintf('Max Re(p) = %.6f\n', max(real(poles_N)));
-if all(real(poles_N) < 0)
-    fprintf('  -> NS SODDISFATTA: tutti i poli hanno parte reale negativa.\n\n');
-else
-    fprintf('  -> NS NON SODDISFATTA: rilevati poli instabili!\n\n');
-end
-% =========================================================================
-
-% =========================================================================
-% NOMINAL PERFORMANCE (NP)
-% Verifica che ||Wp * S||_inf < 1 per il sistema nominale.
-sv_N = sigma(N_nom, omega); %Estrazione valori singolari (Analisi di N11 pesata)
-muNPinf = max(max(sv_N));
-
-fprintf('NOMINAL PERFORMANCE (NP)\n');
-fprintf('||Wp*S||_inf (picco nominale): %.4f\n', muNPinf);
-if muNPinf < 1
-    fprintf('  -> NP SODDISFATTA (Picco < 1).\n\n');
-else
-    fprintf('  -> NP NON SODDISFATTA (Picco >= 1).\n\n');
-end
-% =========================================================================
-
-% =========================================================================
-% ROBUST STABILITY (RS)
-% Robstab per calcolare il margine di stabilità rispetto 
-fprintf('ROBUST STABILITY (RS)\n');
-opts_rob = robOptions('Sensitivity','On');
-[stabmarg, wcu_RS, info_RS] = robstab(Np_unweighted, opts_rob); %(Analisi di N11-Delta)
-
-fprintf('Margine di Stabilità Robusta: Lower = %.4f, Upper = %.4f\n', ...
-    stabmarg.LowerBound, stabmarg.UpperBound);
-if stabmarg.LowerBound > 1
-    fprintf('  -> RS GARANTITA (Margine > 1). Il sistema tollera tutte le incertezze.\n');
-else
-    fprintf('  -> RS NON GARANTITA. Il sistema diventa instabile al %d%% dell''incertezza massima.\n', ...
-        round(stabmarg.LowerBound * 100));
-end
-
-fprintf('\nSensibilità del margine alle singole incertezze:\n');
-disp(info_RS.Sensitivity);
-% =========================================================================
-
-% =========================================================================
-%  ROBUST PERFORMANCE (RP)
-fprintf('ROBUST PERFORMANCE (RP) \n');
-gamma_target = 1;
-[perfmarg, wcu_RP,info_RP] = robgain(Np, gamma_target); %(Si considera tutta N)
-
-fprintf('Margine di Performance Robusta: Lower = %.4f, Upper = %.4f\n', ...
-    perfmarg.LowerBound, perfmarg.UpperBound);
-if perfmarg.LowerBound >= 1
-    fprintf('  -> RP SODDISFATTA.\n\n');
-else
-    fprintf('  -> RP NON SODDISFATTA. Rilassare i pesi WP per garantire RP.\n\n');
-end
-% =========================================================================
-
-
-
-
-%% MU-ANALYSIS HINFSTRUCT (PI)
-fprintf('\n=========================================================\n');
-fprintf(' MU-ANALYSIS HINFSTRUCT  PI \n');
-fprintf('=========================================================\n');
-
-% Inversione di segno e assegnazione I/O
-K_pi_neg = -K_PID_tuned;
-K_pi_neg.u = {'zs_ddot', 'delta_s', 'delta_t', 'zu_ddot'}; 
-K_pi_neg.y = {'u1_cmd', 'u2_cmd'};                             
-
-% Chiusura dell'anello (Np_unweighted per N11)
-Np_pi_unw = connect(P_esteso, K_pi_neg, {'w_in'}, ...
-                        {'zs_ddot', 'delta_s', 'delta_t', 'zu_ddot', 'u1_cmd', 'u2_cmd'});
-
-% Sistema pesato (Np per l'intera matrice N)
-Np_pi = W_perf * Np_pi_unw;
-% =========================================================================
-
-% =========================================================================
-% NOMINAL STABILITY (NS) PI 
-N_nom_pi = Np_pi.NominalValue;
-poles_N_pi = pole(N_nom_pi);
-fprintf('NOMINAL STABILITY (NS)\n');
-fprintf('Max Re(p) = %.6f\n', max(real(poles_N_pi)));
-if all(real(poles_N_pi) < 0)
-    fprintf('  -> NS SODDISFATTA: tutti i poli hanno parte reale negativa.\n\n');
-else
-    fprintf('  -> NS NON SODDISFATTA: rilevati poli instabili!\n\n');
-end
-% =========================================================================
-
-% =========================================================================
-% NOMINAL PERFORMANCE (NP) PI 
-sv_N_pi = sigma(N_nom_pi, omega); 
-muNPinf_pi = max(max(sv_N_pi));
-fprintf('\n=== NOMINAL PERFORMANCE (NP) ===\n');
-fprintf('||Wp*S||_inf (picco nominale): %.4f\n', muNPinf_pi);
-if muNPinf_pi < 1
-    fprintf('  -> NP SODDISFATTA (Picco < 1).\n\n');
-else
-    fprintf('  -> NP NON SODDISFATTA (Picco >= 1).\n\n');
-end
-% =========================================================================
-
-% =========================================================================
-% ROBUST STABILITY (RS) PI 
-fprintf('\n=== ROBUST STABILITY (RS) ===\n');
-[stabmarg_pi, ~, info_RS_pi] = robstab(Np_pi_unw, opts_rob);
-fprintf('Margine di Stabilità Robusta: Lower = %.4f, Upper = %.4f\n', ...
-    stabmarg_pi.LowerBound, stabmarg_pi.UpperBound);
-if stabmarg_pi.LowerBound > 1
-    fprintf('  -> RS GARANTITA (Margine > 1). Il sistema tollera tutte le incertezze.\n');
-else
-    fprintf('  -> RS NON GARANTITA. Il sistema diventa instabile al %d%% dell''incertezza massima.\n', ...
-        round(stabmarg_pi.LowerBound * 100));
-end
-fprintf('\nSensibilità del margine alle singole incertezze:\n');
-disp(info_RS_pi.Sensitivity);
-% =========================================================================
-
-% =========================================================================
-% ROBUST PERFORMANCE (RP) PI 
-fprintf('\n=== ROBUST PERFORMANCE (RP) ===\n');
-[perfmarg_pi, ~, ~] = robgain(Np_pi, 1);
-fprintf('Margine di Performance Robusta: Lower = %.4f, Upper = %.4f\n', ...
-    perfmarg_pi.LowerBound, perfmarg_pi.UpperBound);
-
-if perfmarg_pi.LowerBound >= 1
-    fprintf('  -> RP SODDISFATTA.\n\n');
-else
-    fprintf('  -> RP NON SODDISFATTA. Rilassare i pesi WP per garantire RP.\n\n');
-end
-% =========================================================================
+[Np_mix, Np_unw_mix, margini_mix]   = esegui_mu_analisi(K_mixsyn, 'MIXSYN (Full-Order)', P_esteso, W_perf, omega);
+[Np_hinf, Np_unw_hinf, margini_hinf] = esegui_mu_analisi(K_hinf, 'HINFSYN (Full-Order)', P_esteso, W_perf, omega);
+[Np_pi, Np_unw_pi, margini_pi]      = esegui_mu_analisi(K_PID_tuned, 'PI STRUTTURATO', P_esteso, W_perf, omega);
 
 
 %% SUMMARY 
-
-% =========================================================================
-% MIXSYN 
-fprintf('=== SUMMARY MIXSYN  ===\n');
-fprintf('NS : %s\n', ternary(all(real(poles_N)<0), 'OK', 'NON soddisfatta'));
-fprintf('NP : %s (Picco = %.4f)\n', ternary(muNPinf<1, 'OK', 'NON soddisfatta'), muNPinf);
-fprintf('RS : %s (Margine = %.4f)\n', ternary(stabmarg.LowerBound>1, 'OK', 'NON soddisfatta'), stabmarg.LowerBound);
-fprintf('RP : %s (Margine = %.4f)\n', ternary(perfmarg.LowerBound>1, 'OK', 'NON soddisfatta'), perfmarg.LowerBound);
-% =========================================================================
-
-% =========================================================================
-% HINFSTRUCT (PI)
-fprintf('\n=== SUMMARY HINFSTRUCT (PI) ===\n');
-fprintf('NS : %s\n', ternary(all(real(poles_N_pi)<0), 'OK', 'NON soddisfatta'));
-fprintf('NP : %s (Picco = %.4f)\n', ternary(muNPinf_pi<1, 'OK', 'NON soddisfatta'), muNPinf_pi);
-fprintf('RS : %s (Margine = %.4f)\n', ternary(stabmarg_pi.LowerBound>1, 'OK', 'NON soddisfatta'), stabmarg_pi.LowerBound);
-fprintf('RP : %s (Margine = %.4f)\n', ternary(perfmarg_pi.LowerBound>1, 'OK', 'NON soddisfatta'), perfmarg_pi.LowerBound);
-% =========================================================================
+fprintf('\n=========================================================\n');
+fprintf(' === SUMMARY FINALE DEI MARGINI ===\n');
+fprintf('=========================================================\n');
+stampa_summary('MIXSYN', margini_mix);
+stampa_summary('HINFSYN', margini_hinf);
+stampa_summary('PI STRUTTURATO', margini_pi);
 
 
-% ── Funzione di supporto  ─────────────
+%% GENERAZIONE GRAFICI 
+
+% Calcolo grafici
+fprintf('\n=== Calcolo curve in frequenza per i Plot (attendere...) ===\n');
+
+[mu_NP_mix, mu_RS_mix, mu_RP_mix]   = calcola_mu_frequenza(Np_mix, Np_unw_mix, omega);
+[mu_NP_hinf, mu_RS_hinf, mu_RP_hinf] = calcola_mu_frequenza(Np_hinf, Np_unw_hinf, omega);
+[mu_NP_pi, mu_RS_pi, mu_RP_pi]      = calcola_mu_frequenza(Np_pi, Np_unw_pi, omega);
+
+
+% Crea un'unica figura principale
+fig_main = figure('Name','Mu-Analisi: Confronto Controllori', 'Position', [100, 100, 800, 500]);
+
+% Crea il gruppo di schede (Tabs)
+tgroup = uitabgroup('Parent', fig_main);
+
+% --- Scheda 1: MIXSYN ---
+tab1 = uitab('Parent', tgroup, 'Title', 'MIXSYN (Full-Order)');
+ax1 = axes('Parent', tab1); % Associa gli assi a questa scheda
+semilogx(ax1, omega, mu_NP_mix(:), 'b-.', 'LineWidth', 1.5); hold(ax1, 'on');
+semilogx(ax1, omega, mu_RS_mix(:), 'g--', 'LineWidth', 1.5);
+semilogx(ax1, omega, mu_RP_mix(:), 'r', 'LineWidth', 1.5);
+semilogx(ax1, omega, ones(size(omega)), 'k-', 'LineWidth', 1.5); 
+hold(ax1, 'off'); grid(ax1, 'on');
+title(ax1, 'Mu-Analisi: Ottimo H_\infty (mixsyn)', 'FontSize', 11, 'FontWeight', 'bold');
+xlabel(ax1, 'Frequenza [rad/s]', 'FontSize', 10);
+ylabel(ax1, 'Valore Singolare \mu', 'FontSize', 10);
+legend(ax1, '\mu_{NP}', '\mu_{RS}', '\mu_{RP}', 'Soglia (\mu = 1)', 'Location', 'best');
+ylim(ax1, [0, 1.8]);
+
+% --- Scheda 2: HINFSYN ---
+tab2 = uitab('Parent', tgroup, 'Title', 'HINFSYN (Full-Order)');
+ax2 = axes('Parent', tab2);
+semilogx(ax2, omega, mu_NP_hinf(:), 'b-.', 'LineWidth', 1.5); hold(ax2, 'on');
+semilogx(ax2, omega, mu_RS_hinf(:), 'g--', 'LineWidth', 1.5);
+semilogx(ax2, omega, mu_RP_hinf(:), 'r', 'LineWidth', 1.5);
+semilogx(ax2, omega, ones(size(omega)), 'k-', 'LineWidth', 1.5); 
+hold(ax2, 'off'); grid(ax2, 'on');
+title(ax2, 'Mu-Analisi: Ottimo H_\infty (hinfsyn)', 'FontSize', 11, 'FontWeight', 'bold');
+xlabel(ax2, 'Frequenza [rad/s]', 'FontSize', 10);
+ylabel(ax2, 'Valore Singolare \mu', 'FontSize', 10);
+legend(ax2, '\mu_{NP}', '\mu_{RS}', '\mu_{RP}', 'Soglia (\mu = 1)', 'Location', 'best');
+ylim(ax2, [0, 1.8]);
+
+% --- Scheda 3: HINFSTRUCT (PI) ---
+tab3 = uitab('Parent', tgroup, 'Title', 'PI Strutturato');
+ax3 = axes('Parent', tab3);
+semilogx(ax3, omega, mu_NP_pi(:), 'b-.', 'LineWidth', 1.5); hold(ax3, 'on');
+semilogx(ax3, omega, mu_RS_pi(:), 'g--', 'LineWidth', 1.5);
+semilogx(ax3, omega, mu_RP_pi(:), 'r', 'LineWidth', 1.5);
+semilogx(ax3, omega, ones(size(omega)), 'k-', 'LineWidth', 1.5); 
+hold(ax3, 'off'); grid(ax3, 'on');
+title(ax3, 'Mu-Analisi: PI Strutturato (hinfstruct)', 'FontSize', 11, 'FontWeight', 'bold');
+xlabel(ax3, 'Frequenza [rad/s]', 'FontSize', 10);
+ylabel(ax3, 'Valore Singolare \mu', 'FontSize', 10);
+legend(ax3, '\mu_{NP}', '\mu_{RS}', '\mu_{RP}', 'Soglia (\mu = 1)', 'Location', 'best');
+ylim(ax3, [0, 1.8]);
+
+fprintf('\nGrafici generati con successo in un''unica finestra a schede!\n');
+
+%% FUNZIONI LOCALI DI SUPPORTO
+
+
+function [Np, Np_unweighted, margini] = esegui_mu_analisi(K_ctrl, nome_ctrl, P_esteso, W_perf, omega)
+    fprintf('\n---------------------------------------------------------\n');
+    fprintf(' MU-ANALYSIS: %s \n', nome_ctrl);
+    fprintf('---------------------------------------------------------\n');
+
+    % Chiusura Anello
+    K_neg = -K_ctrl;
+    K_neg.u = {'zs_ddot', 'delta_s', 'delta_t', 'zu_ddot'}; 
+    K_neg.y = {'u1_cmd', 'u2_cmd'};                             
+    Np_unweighted = connect(P_esteso, K_neg, {'w_in'}, {'zs_ddot', 'delta_s', 'delta_t', 'zu_ddot', 'u1_cmd', 'u2_cmd'});
+    Np = W_perf * Np_unweighted;
+
+    % Nominal Stability (NS)
+    N_nom = Np.NominalValue;
+    poles_N = pole(N_nom);
+    NS_ok = all(real(poles_N) < 0);
+    fprintf(' NS: %s (Max Re(p) = %.4f)\n', ternary(NS_ok, 'OK', 'FAIL'), max(real(poles_N)));
+
+    % Nominal Performance (NP)
+    muNPinf = max(max(sigma(N_nom, omega)));
+    NP_ok = muNPinf < 1;
+    fprintf(' NP: %s (Picco = %.4f)\n', ternary(NP_ok, 'OK', 'FAIL'), muNPinf);
+
+    % Robust Stability (RS) con Sensibilità
+    opts_rob = robOptions('Display', 'off', 'Sensitivity', 'on'); % Attivata la sensibilità!
+    [sm, ~, info_RS] = robstab(Np_unweighted, opts_rob);
+    RS_ok = sm.LowerBound > 1;
+    fprintf(' RS: %s (Margine = %.4f)\n', ternary(RS_ok, 'OK', 'FAIL'), sm.LowerBound);
+    
+    % Stampa della sensibilità
+    fprintf('     Sensibilità del margine alle singole incertezze:\n');
+    disp(info_RS.Sensitivity);
+
+    % Robust Performance (RP)
+    pm = robgain(Np, 1, robOptions('Display', 'off'));
+    RP_ok = pm.LowerBound >= 1;
+    fprintf(' RP: %s (Margine = %.4f)\n', ternary(RP_ok, 'OK', 'FAIL'), pm.LowerBound);
+
+    % Salvataggio margini per il summary
+    margini.NS = NS_ok;
+    margini.NP = NP_ok; 
+    margini.muNPinf = muNPinf;
+    margini.RS = RS_ok; 
+    margini.RS_val = sm.LowerBound;
+    margini.RP = RP_ok; 
+    margini.RP_val = pm.LowerBound;
+end
+
+function [mu_NP, mu_RS, mu_RP] = calcola_mu_frequenza(Np, Np_unw, omega)
+    opts_plot = robOptions('Display', 'off');
+    mu_RS = zeros(1, length(omega));
+    mu_RP = zeros(1, length(omega));
+    mu_NP = max(sigma(Np.NominalValue, omega), [], 1); 
+
+    for i = 1:length(omega)
+        sm = robstab(ufrd(Np_unw, omega(i)), opts_plot);
+        pm = robgain(ufrd(Np, omega(i)), 1, opts_plot);
+        mu_RS(i) = 1 / sm.LowerBound;
+        mu_RP(i) = 1 / pm.LowerBound;
+    end
+end
+
+function stampa_summary(nome, m)
+    fprintf('%-18s | NS: %-4s | NP: %-4s (%.2f) | RS: %-4s (%.2f) | RP: %-4s (%.2f)\n', ...
+        nome, ...
+        ternary(m.NS, 'OK', 'FAIL'), ...
+        ternary(m.NP, 'OK', 'FAIL'), m.muNPinf, ...
+        ternary(m.RS, 'OK', 'FAIL'), m.RS_val, ...
+        ternary(m.RP, 'OK', 'FAIL'), m.RP_val);
+end
+
 function s = ternary(cond, a, b)
     if cond; s = a; else; s = b; end
 end
-
-
-%% =========================================================================
-%  GRAFICI FINALI: MU-PLOT (SCALA LINEARE)
-% =========================================================================
-fprintf('\n=== Generazione Grafici Mu-Analisi ===\n');
-
-% 1. Conversione in modelli incerti in frequenza (ufrd) per evitare cicli
-opts_plot = robOptions('Display', 'off');
-Np_mix_g     = ufrd(Np, omega);
-Np_mix_unw_g = ufrd(Np_unweighted, omega);
-Np_pi_g      = ufrd(Np_pi, omega);
-Np_pi_unw_g  = ufrd(Np_pi_unw, omega);
-
-% 2. Calcolo dei vettori mu per il MIXSYN (Inverso del LowerBound)
-fprintf('Calcolo curve in frequenza per MIXSYN (attendere qualche secondo)...\n');
-opts_plot = robOptions('Display', 'off');
-
-% Inizializziamo i vettori a zero
-mu_RS_mix = zeros(1, length(omega));
-mu_RP_mix = zeros(1, length(omega));
-
-% Vettore NP (sigma funziona già su tutto il vettore omega)
-mu_NP_mix = max(sigma(N_nom, omega), [], 1); 
-
-for i = 1:length(omega)
-    % Valutazione puntuale usando ufrd per MANTENERE le incertezze
-    sys_unw_w = ufrd(Np_unweighted, omega(i));
-    sys_w     = ufrd(Np, omega(i));
-    
-    sm_mix = robstab(sys_unw_w, opts_plot);
-    pm_mix = robgain(sys_w, 1, opts_plot);
-    
-    mu_RS_mix(i) = 1 / sm_mix.LowerBound;
-    mu_RP_mix(i) = 1 / pm_mix.LowerBound;
-end
-
-% 3. Calcolo dei vettori mu per il PI (hinfstruct)
-fprintf('Calcolo curve in frequenza per HINFSTRUCT PI (attendere qualche secondo)...\n');
-mu_RS_pi = zeros(1, length(omega));
-mu_RP_pi = zeros(1, length(omega));
-
-mu_NP_pi = max(sigma(N_nom_pi, omega), [], 1);
-
-for i = 1:length(omega)
-    sys_unw_pi_w = ufrd(Np_pi_unw, omega(i));
-    sys_pi_w     = ufrd(Np_pi, omega(i));
-    
-    sm_pi = robstab(sys_unw_pi_w, opts_plot);
-    pm_pi = robgain(sys_pi_w, 1, opts_plot);
-    
-    mu_RS_pi(i) = 1 / sm_pi.LowerBound;
-    mu_RP_pi(i) = 1 / pm_pi.LowerBound;
-end
-
-
-%% 4. Creazione della Figura affiancata
-figure('Name','Mu-Analisi: mixsyn vs hinfstruct','Position',[100, 100, 1000, 450]);
-
-% --- Subplot 1: MIXSYN ---
-subplot(2,1,1);
-h1 = semilogx(omega, mu_NP_mix(:), 'b-.', 'LineWidth', 1.5); hold on;
-h2 = semilogx(omega, mu_RS_mix(:), 'g--', 'LineWidth', 1.5);
-h3 = semilogx(omega, mu_RP_mix(:), 'r', 'LineWidth', 1.5);
-% Sostituito yline con semilogx per avere oggetti omogenei
-h4 = semilogx(omega, ones(size(omega)), 'k-', 'LineWidth', 1.5); 
-hold off; grid on;
-title('Mu-Analisi: Ottimo H_\infty (mixsyn)', 'FontSize', 11, 'FontWeight', 'bold');
-xlabel('Frequenza [rad/s]', 'FontSize', 10);
-ylabel('Valore Singolare Strutturato \mu', 'FontSize', 10);
-legend('\mu_{NP}', '\mu_{RS}', '\mu_{RP}', 'Soglia Critica (\mu = 1)', 'Location', 'best');
-ylim([0, 1.8]); % Fissiamo il limite Y per un confronto equo
-
-% --- Subplot 2: HINFSTRUCT (PI) ---
-subplot(2,1,2);
-h5 = semilogx(omega, mu_NP_pi(:), 'b-.', 'LineWidth', 1.5); hold on;
-h6 = semilogx(omega, mu_RS_pi(:), 'g--', 'LineWidth', 1.5);
-h7 = semilogx(omega, mu_RP_pi(:), 'r', 'LineWidth', 1.5);
-% Sostituito yline con semilogx per avere oggetti omogenei
-h8 = semilogx(omega, ones(size(omega)), 'k-', 'LineWidth', 1.5); 
-hold off; grid on;
-title('Mu-Analisi: PI Strutturato (hinfstruct)', 'FontSize', 11, 'FontWeight', 'bold');
-xlabel('Frequenza [rad/s]', 'FontSize', 10);
-legend('\mu_{NP}', '\mu_{RS}', '\mu_{RP}', 'Soglia Critica (\mu = 1)', 'Location', 'best');
-ylim([0, 1.8]);
-
-fprintf('\nGrafici generati con successo!\n');
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-% %% =========================================================================
-% %  12. GRAFICI FINALI: NOMINAL vs WORST-CASE PERFORMANCE
-% % =========================================================================
-% fprintf('\n=== Generazione Grafici ===\n');
-% 
-% figure('Name','Analisi di Robustezza in Frequenza','Position',[100, 100, 700, 500]);
-% 
-% % La funzione wcsigma chiamata senza argomenti di uscita traccia 
-% % automaticamente la curva Nominale e la curva Worst-Case!
-% wcsigma(Np, omega);
-% 
-% % Aggiungiamo la nostra linea critica di 0 dB (mu = 1)
-% hold on;
-% yline(0, 'k:', 'LineWidth', 2, 'DisplayName', 'Soglia Critica 0 dB (\mu = 1)');
-% hold off;
-% 
-% grid on;
-% title('Mu-Analisi: Nominal vs Worst-Case Performance');
-
-
-
-

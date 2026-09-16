@@ -2,12 +2,12 @@
 %
 % Design objective: minimize ||[WP*S; Wu*KS]||_inf < gamma
 % Basato fedelmente sul template del docente.
-
-clear all; close all; clc;
-
-% % --- 1. CARICAMENTO PARAMETRI E CREAZIONE IMPIANTO INCERTO ---
-run('A_quarter_car_parameters.m');
-run('A_uncertain_Plant.m');
+close all
+% clear all; close all; clc;
+% 
+% % % --- 1. CARICAMENTO PARAMETRI E CREAZIONE IMPIANTO INCERTO ---
+% run('A_quarter_car_parameters.m');
+% run('A_uncertain_Plant.m');
 
 s = tf('s');
 
@@ -95,7 +95,14 @@ wP2=0.01;
 % A_road = 10.0;  
 % wB_road = 20.0; 
 % wP3 = (s/M + wB_road) / (s + wB_road*A_road);
-wP3 = 0.01;
+%wP3 = 0.01;
+
+w_n_ruota = 63;      
+zeta_ruota = 0.6;    
+Gain_ruota = 1.5;    
+
+filtro_ruota = Gain_ruota * (2 * zeta_ruota * w_n_ruota * s) / (s^2 + 2 * zeta_ruota * w_n_ruota * s + w_n_ruota^2);
+wP3 = 0.2 + filtro_ruota;
 
 % 4. Ruota (zu_ddot): Peso costante di relax
 wP4 = 0.01;
@@ -105,7 +112,7 @@ WP = blkdiag(wP1, wP2, wP3, wP4);
 % Sforzo di controllo (Wu): limite fisso a 30000 N (scalato)
 wu_LF = 1/40000;
 wu_HF = 1/1000;     % Multa salatissima per le reazioni nervose
-w_taglio = 20;      % Frequenza di taglio (inizia a frenare dopo i 2-3 Hz)
+w_taglio = 80;      % Frequenza di taglio (inizia a frenare dopo i 2-3 Hz)
 
 
 % Creazione del filtro passa-alto per il peso
@@ -252,7 +259,7 @@ NMEAS = 4;
 NCONT = 2;
 
 opts = hinfsynOptions('Display','on');
-[K_hinf, CL_hinf, gamma_hinf, info_hinf] = hinfsyn(P_gen_nom, NMEAS, NCONT, [2, 3], opts);
+[K_hinf, CL_hinf, gamma_hinf, info_hinf] = hinfsyn(P_gen_nom, NMEAS, NCONT, [0.3, 2], opts);
 K_hinf = zpk(K_hinf);
 
 fprintf('Achieved H-inf norm gamma (hinfsyn) = %.4f\n', gamma_hinf);
@@ -297,7 +304,7 @@ I_action = (Ki_base / (s + 0.001)) * Selector_I;
 K_custom = Kp + I_action;
 
 % D. Filtro Passa-Basso a 150 rad/s (per rendere il controllore realistico e proprio)
-wf = 39; 
+wf = 80; 
 LPF_single = tf(wf, [1, wf]);
 LPF_matrix = blkdiag(LPF_single, LPF_single);
 
@@ -448,56 +455,60 @@ end
 % end
 
 
+
+
 %% =========================================================
-%%  ANALISI IN FREQUENZA: COMFORT E TENUTA DI STRADA (H-inf)
+%%  ANALISI IN FREQUENZA MULTIPLA (Passivo vs H-inf vs PI)
 %% =========================================================
-fprintf('\n=== Generazione Grafici di Bode: H-inf vs Passivo ===\n');
+fprintf('\n=== Generazione Grafici di Bode Multipli ===\n');
 
 % 1. Vettore di frequenze
 w_vec = logspace(-1, 3, 1000); 
 
-% 2. Impianto Passivo: Estraiamo la colonna relativa al disturbo 'w_in'
-% P_esteso_nom ha ingressi {'w_in','u1_cmd','u2_cmd'}
-% P_esteso_nom ha uscite   {'zs_ddot','delta_s','delta_t','zu_ddot'}
+% 2. Impianto Passivo: Estraiamo dal Plant nudo
 G_passiva = Plant_nom(:, 'w_dist');
 
-% 3. Impianto Attivo (H-inf)
-% La funzione di trasferimento ad anello chiuso w_in -> y è S_cl * G_passiva
-G_attiva_Hinf = minreal(S_cl * G_passiva);
+% 3. Calcolo Matrici di Sensibilità e F.d.T. per TUTTI i controllori
+% (Convenzione reazione negativa: S = inv(I + G*K))
+
+% A. Controllore mixsyn (Full-Order)
+S_mixsyn   = inv(eye(4) + G_uy * K_mixsyn);
+G_a_mixsyn = minreal(S_mixsyn * G_passiva);
+
+% B. Controllore hinfsyn (Full-Order)
+S_hinf   = inv(eye(4) + G_uy * K_hinf);
+G_a_hinf = minreal(S_hinf * G_passiva);
+
+% C. Controllore PI Strutturato (hinfstruct)
+S_pid   = inv(eye(4) + G_uy * K_PID_tuned);
+G_a_pid = minreal(S_pid * G_passiva);
 
 % 4. Estrazione delle singole F.d.T
-% Riga 1: Comfort (zs_ddot)
-G_p_comfort = G_passiva(1, 1);
-G_a_comfort = G_attiva_Hinf(1, 1);
+% Comfort (Riga 1: w_in -> zs_ddot)
+G_p_comfort    = G_passiva(1, 1);
+G_mix_comfort  = G_a_mixsyn(1, 1);
+G_hinf_comfort = G_a_hinf(1, 1);
+G_pid_comfort  = G_a_pid(1, 1);
 
-% Riga 3: Tenuta di Strada (delta_t)
-G_p_tenuta = G_passiva(3, 1);
-G_a_tenuta = G_attiva_Hinf(3, 1);
+% Tenuta di Strada (Riga 3: w_in -> delta_t)
+G_p_tenuta    = G_passiva(3, 1);
+G_mix_tenuta  = G_a_mixsyn(3, 1);
+G_hinf_tenuta = G_a_hinf(3, 1);
+G_pid_tenuta  = G_a_pid(3, 1);
 
 % --- PLOT 1: COMFORT VIBRAZIONALE ---
-figure('Name', 'Bode H-inf - Comfort Vibrazionale', 'Color', 'w');
-bodemag(G_p_comfort, 'k--', G_a_comfort, 'r', w_vec);
+figure('Name', 'Bode - Confronto Controllori (Comfort)', 'Color', 'w');
+% mixsyn in rosso continuo, hinfsyn in blu tratteggiato sovrapposto, PI in verde
+bodemag(G_p_comfort, 'k--', G_mix_comfort, 'r', G_hinf_comfort, 'b:', G_pid_comfort, 'g', w_vec);
 grid on;
-legend('Passiva', 'Attiva (H_\infty Full-Order)', 'Location', 'southwest');
+legend('Passiva', 'mixsyn (Full-Order)', 'hinfsyn (Full-Order)', 'PI Strutturato', 'Location', 'southwest');
 title('Amplificazione Disturbo: w_{in} \rightarrow Accelerazione Cassa (Comfort)');
 
 % --- PLOT 2: TENUTA DI STRADA ---
-figure('Name', 'Bode H-inf - Tenuta di Strada', 'Color', 'w');
-bodemag(G_p_tenuta, 'k--', G_a_tenuta, 'r', w_vec);
+figure('Name', 'Bode - Confronto Controllori (Tenuta)', 'Color', 'w');
+bodemag(G_p_tenuta, 'k--', G_mix_tenuta, 'r', G_hinf_tenuta, 'b:', G_pid_tenuta, 'g', w_vec);
 grid on;
-legend('Passiva', 'Attiva (H_\infty Full-Order)', 'Location', 'southwest');
+legend('Passiva', 'mixsyn (Full-Order)', 'hinfsyn (Full-Order)', 'PI Strutturato', 'Location', 'southwest');
 title('Amplificazione Disturbo: w_{in} \rightarrow \delta_t (Tenuta di Strada)');
-
-% --- CALCOLO NUMERICO DEI PICCHI ---
-[mag_p_t, ~, ~] = bode(G_p_tenuta, w_vec);
-[mag_a_t, ~, ~] = bode(G_a_tenuta, w_vec);
-mag_p_t_dB = 20*log10(squeeze(mag_p_t));
-mag_a_t_dB = 20*log10(squeeze(mag_a_t));
-
-% Cerchiamo il picco ad alta frequenza (Wheel Hop) tra 40 e 80 rad/s
-idx_ruota = find(w_vec > 40 & w_vec < 80);
-[~, loc_ruota] = max(mag_p_t_dB(idx_ruota));
-peak_ruota = idx_ruota(loc_ruota);
-
 
 
