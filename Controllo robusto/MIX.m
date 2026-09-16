@@ -5,9 +5,9 @@
 
 clear all; close all; clc;
 
-% --- 1. CARICAMENTO PARAMETRI E CREAZIONE IMPIANTO INCERTO ---
-run('quarter_car_parameters.m');
-run('uncertain_Plant.m');
+% % --- 1. CARICAMENTO PARAMETRI E CREAZIONE IMPIANTO INCERTO ---
+run('A_quarter_car_parameters.m');
+run('A_uncertain_Plant.m');
 
 s = tf('s');
 
@@ -68,11 +68,19 @@ M = 2.0;
 % wP1 = 0.4 * (s / (s + 1)) * (50 / (s + 5)); 
 
 % Filtro passa-banda Risonante (Stretto e mirato)
-w_n = 3;        % Centro della valle (3 rad/s, la frequenza del tuo test!)
-zeta = 0.5;     % Larghezza: più è piccolo, più la valle è stretta (0.2 è un "cecchino")
-Gain = 2.5;     % Profondità della valle (quanto vogliamo schiacciare l'errore)
+w_n = 6.5;        % Centro della valle (3 rad/s, la frequenza del tuo test!)
+zeta = 0.6;     % Larghezza: più è piccolo, più la valle è stretta (0.2 è un "cecchino")
+Gain = 1.5;     % Profondità della valle (quanto vogliamo schiacciare l'errore)
 
 wP1 = Gain * (2 * zeta * w_n * s) / (s^2 + 2 * zeta * w_n * s + w_n^2);
+
+% % 1. Comfort (zs_ddot): Filtro Risonante centrato sulla VERA risonanza
+% w_n_cassa = 6.5;  % Frequenza di risonanza della cassa (attacchiamo il picco vero)
+% zeta_cassa = 0.7; % Campana larga (0.7) per "spalmare" l'effetto materasso
+% Gain_cassa = 2.0; % Guadagno moderato (non serve esagerare)
+% 
+% wP1 = Gain_cassa * (2 * zeta_cassa * w_n_cassa * s) / (s^2 + 2 * zeta_cassa * w_n_cassa * s + w_n_cassa^2);
+
 
 % 2. Autolivellamento (delta_s): Rallentiamo la banda a 0.1 rad/s.
 % Se gli chiedi di livellare l'auto in 1 secondo (wB=1), richiede 100.000 N.
@@ -97,7 +105,8 @@ WP = blkdiag(wP1, wP2, wP3, wP4);
 % Sforzo di controllo (Wu): limite fisso a 30000 N (scalato)
 wu_LF = 1/40000;
 wu_HF = 1/1000;     % Multa salatissima per le reazioni nervose
-w_taglio = 13;      % Frequenza di taglio (inizia a frenare dopo i 2-3 Hz)
+w_taglio = 20;      % Frequenza di taglio (inizia a frenare dopo i 2-3 Hz)
+
 
 % Creazione del filtro passa-alto per il peso
 wu = wu_HF * (s + w_taglio * (wu_LF/wu_HF)) / (s + w_taglio);
@@ -243,7 +252,7 @@ NMEAS = 4;
 NCONT = 2;
 
 opts = hinfsynOptions('Display','on');
-[K_hinf, CL_hinf, gamma_hinf, info_hinf] = hinfsyn(P_gen_nom, NMEAS, NCONT, [0.3, 2], opts);
+[K_hinf, CL_hinf, gamma_hinf, info_hinf] = hinfsyn(P_gen_nom, NMEAS, NCONT, [2, 3], opts);
 K_hinf = zpk(K_hinf);
 
 fprintf('Achieved H-inf norm gamma (hinfsyn) = %.4f\n', gamma_hinf);
@@ -437,3 +446,58 @@ end
 %         s = '<-- VIOLATED (> 1)';
 %     end
 % end
+
+
+%% =========================================================
+%%  ANALISI IN FREQUENZA: COMFORT E TENUTA DI STRADA (H-inf)
+%% =========================================================
+fprintf('\n=== Generazione Grafici di Bode: H-inf vs Passivo ===\n');
+
+% 1. Vettore di frequenze
+w_vec = logspace(-1, 3, 1000); 
+
+% 2. Impianto Passivo: Estraiamo la colonna relativa al disturbo 'w_in'
+% P_esteso_nom ha ingressi {'w_in','u1_cmd','u2_cmd'}
+% P_esteso_nom ha uscite   {'zs_ddot','delta_s','delta_t','zu_ddot'}
+G_passiva = Plant_nom(:, 'w_dist');
+
+% 3. Impianto Attivo (H-inf)
+% La funzione di trasferimento ad anello chiuso w_in -> y è S_cl * G_passiva
+G_attiva_Hinf = minreal(S_cl * G_passiva);
+
+% 4. Estrazione delle singole F.d.T
+% Riga 1: Comfort (zs_ddot)
+G_p_comfort = G_passiva(1, 1);
+G_a_comfort = G_attiva_Hinf(1, 1);
+
+% Riga 3: Tenuta di Strada (delta_t)
+G_p_tenuta = G_passiva(3, 1);
+G_a_tenuta = G_attiva_Hinf(3, 1);
+
+% --- PLOT 1: COMFORT VIBRAZIONALE ---
+figure('Name', 'Bode H-inf - Comfort Vibrazionale', 'Color', 'w');
+bodemag(G_p_comfort, 'k--', G_a_comfort, 'r', w_vec);
+grid on;
+legend('Passiva', 'Attiva (H_\infty Full-Order)', 'Location', 'southwest');
+title('Amplificazione Disturbo: w_{in} \rightarrow Accelerazione Cassa (Comfort)');
+
+% --- PLOT 2: TENUTA DI STRADA ---
+figure('Name', 'Bode H-inf - Tenuta di Strada', 'Color', 'w');
+bodemag(G_p_tenuta, 'k--', G_a_tenuta, 'r', w_vec);
+grid on;
+legend('Passiva', 'Attiva (H_\infty Full-Order)', 'Location', 'southwest');
+title('Amplificazione Disturbo: w_{in} \rightarrow \delta_t (Tenuta di Strada)');
+
+% --- CALCOLO NUMERICO DEI PICCHI ---
+[mag_p_t, ~, ~] = bode(G_p_tenuta, w_vec);
+[mag_a_t, ~, ~] = bode(G_a_tenuta, w_vec);
+mag_p_t_dB = 20*log10(squeeze(mag_p_t));
+mag_a_t_dB = 20*log10(squeeze(mag_a_t));
+
+% Cerchiamo il picco ad alta frequenza (Wheel Hop) tra 40 e 80 rad/s
+idx_ruota = find(w_vec > 40 & w_vec < 80);
+[~, loc_ruota] = max(mag_p_t_dB(idx_ruota));
+peak_ruota = idx_ruota(loc_ruota);
+
+
+
