@@ -18,7 +18,7 @@ fprintf('=========================================================\n');
 
 % N-DELTA STRUCTURE AND PERTURBED MODEL (Np)
 % Si inverte il segno del controllore per garantire la retroazione negativa (u = K * (-y) = -K * y)
-K_hinf_neg = -K_hinf;
+K_hinf_neg = -K_mixsyn;
 
 % etichette al controllore
 K_hinf_neg.u = {'zs_ddot', 'delta_s', 'delta_t', 'zu_ddot'}; 
@@ -307,24 +307,24 @@ fprintf('\nGrafici generati con successo!\n');
 
 
 
-%% =========================================================================
-%  12. GRAFICI FINALI: NOMINAL vs WORST-CASE PERFORMANCE
-% =========================================================================
-fprintf('\n=== Generazione Grafici ===\n');
-
-figure('Name','Analisi di Robustezza in Frequenza','Position',[100, 100, 700, 500]);
-
-% La funzione wcsigma chiamata senza argomenti di uscita traccia 
-% automaticamente la curva Nominale e la curva Worst-Case!
-wcsigma(Np, omega);
-
-% Aggiungiamo la nostra linea critica di 0 dB (mu = 1)
-hold on;
-yline(0, 'k:', 'LineWidth', 2, 'DisplayName', 'Soglia Critica 0 dB (\mu = 1)');
-hold off;
-
-grid on;
-title('Mu-Analisi: Nominal vs Worst-Case Performance');
+% %% =========================================================================
+% %  12. GRAFICI FINALI: NOMINAL vs WORST-CASE PERFORMANCE
+% % =========================================================================
+% fprintf('\n=== Generazione Grafici ===\n');
+% 
+% figure('Name','Analisi di Robustezza in Frequenza','Position',[100, 100, 700, 500]);
+% 
+% % La funzione wcsigma chiamata senza argomenti di uscita traccia 
+% % automaticamente la curva Nominale e la curva Worst-Case!
+% wcsigma(Np, omega);
+% 
+% % Aggiungiamo la nostra linea critica di 0 dB (mu = 1)
+% hold on;
+% yline(0, 'k:', 'LineWidth', 2, 'DisplayName', 'Soglia Critica 0 dB (\mu = 1)');
+% hold off;
+% 
+% grid on;
+% title('Mu-Analisi: Nominal vs Worst-Case Performance');
 
 
 
