@@ -4,7 +4,7 @@
 
 clear all; close all; clc;
 
-% % --- 1. CARICAMENTO PARAMETRI E CREAZIONE IMPIANTO INCERTO ---
+% --- CARICAMENTO PARAMETRI E CREAZIONE IMPIANTO INCERTO ---
 run('A_quarter_car_parameters.m');
 run('A_uncertain_Plant.m');
 
@@ -13,7 +13,7 @@ s = tf('s');
 %% =========================================================
 %  MIMO PLANT (Quarter-Car)
 %% =========================================================
-% Parametri
+% Parametri del modello nominale
 m_s = parameters.m_s;
 m_u = parameters.m_u;
 k_s = parameters.ks0;
@@ -46,7 +46,7 @@ D = [ 1/m_s,   0,      0;
 %  PERFORMANCE AND CONTROL WEIGHTS
 %% =========================================================
 
-% 1. Accelerazione della cassa sospesa: comfort
+% Accelerazione della cassa sospesa: comfort
 % L'accelerazione ha guadagno nullo a regime permanente. Per questo motivo
 % il relativo peso viene scelto passa-banda, così da concentrare la
 % penalizzazione nella banda di risonanza senza imporre vincoli a 0 rad/s.
@@ -62,10 +62,10 @@ Gain = 1.5;
 
 wP1 = Gain * (2 * zeta * w_n * s) / (s^2 + 2 * zeta * w_n * s + w_n^2);
 
-% 2. Autolivellamento (delta_s): Peso costante di relax
+% Autolivellamento (delta_s): peso costante di relax
 wP2=0.01; 
 
-% 3. Tenuta di Strada (delta_t)
+% Tenuta di strada (delta_t)
 
 w_n_ruota = 63;      
 zeta_ruota = 0.6;    
@@ -74,15 +74,15 @@ Gain_ruota = 1.5;
 filtro_ruota = Gain_ruota * (2 * zeta_ruota * w_n_ruota * s) / (s^2 + 2 * zeta_ruota * w_n_ruota * s + w_n_ruota^2);
 wP3 = 0.2 + filtro_ruota;
 
-% 4. Ruota (zu_ddot): Peso costante di relax
+% Ruota (zu_ddot): peso costante di relax
 wP4 = 0.01;
 
 WP = blkdiag(wP1, wP2, wP3, wP4);
 
-% Sforzo di controllo (Wu): 
+% Peso dello sforzo di controllo (Wu):
 wu_LF = 1/40000;
-wu_HF = 1/1000;     % Multa salatissima per le reazioni nervose
-w_taglio = 80;      % Frequenza di taglio
+wu_HF = 1/1000;     % Penalizzazione delle componenti ad alta frequenza
+w_taglio = 80;      % Frequenza di transizione [rad/s]
 
 
 % Penalizzazione dello sforzo di controllo:
@@ -93,12 +93,12 @@ wu = wu_HF * (s + w_taglio * (wu_LF/wu_HF)) / (s + w_taglio);
 Wu = blkdiag(wu, wu);
 
 
-% WT vuoto: nessun peso esplicito sulla sensibilità complementare.
-% Di conseguenza la sintesi mixsyn considera solo W1 e W2.
+% Nessun peso esplicito sulla sensibilità complementare: la sintesi mixsyn
+% considera quindi solo il peso di prestazione e quello dello sforzo.
 
 WT = [];
 
-%% Costruzione plant
+%% Costruzione del modello nominale e dell'impianto generalizzato
 
 % Il modello ha:
 %   3 ingressi fisici: u1_force, u2_force, w_dist
@@ -146,7 +146,7 @@ K_mixsyn = zpk(K_mixsyn);
 fprintf('\nAchieved H-inf norm gamma = %.4f\n', gamma);
 fprintf('Controller order: %d\n', order(K_mixsyn));
 
-% Closed-loop sensitivity functions
+% Funzioni di sensibilità in anello chiuso con retroazione negativa
 S_cl  = inv(eye(4) + G_uy*K_mixsyn);                % output sensitivity   (I+GK)^-1
 KS_cl = K_mixsyn * inv(eye(4) + G_uy*K_mixsyn);     % control sensitivity  K*(I+GK)^-1
 T_cl  = G_uy*K_mixsyn * inv(eye(4)+G_uy*K_mixsyn);  % comp. sensitivity    GK*(I+GK)^-1
@@ -205,29 +205,29 @@ end
 %% =========================================================
 fprintf('\n=== Sintesi H-infinity con PI Strutturato (Comfort) ===\n');
 
-% 3. COSTRUZIONE DELLA STRUTTURA
-% A. Proporzionale: Matrice 2x4 (legge tutti i sensori)
+% Costruzione della struttura
+% Azione proporzionale: matrice 2x4 che utilizza tutti i sensori
 Kp = realp('Kp', zeros(2,4)); 
 
 % Azione integrale filtrata sull'accelerazione della cassa.
-% Il polo a 0.001 rad/s evita il comportamento ideale non strettamente
-% proprio alle bassissime frequenze.
+% Il polo a 0.001 rad/s limita il guadagno alle frequenze prossime a zero,
+% evitando il comportamento non limitato dell'integratore ideale.
 
-Ki_base = realp('Ki_base', [0; 0]); 
-Selector_I = [1, 0, 0, 0]; % Accende SOLO il canale 1 (zs_ddot)
+Ki_base = realp('Ki_base', [0; 0]);
+Selector_I = [1, 0, 0, 0]; % Seleziona il canale dell'accelerazione della cassa
 I_action = (Ki_base / (s + 0.001)) * Selector_I;
 
-% C. Assemblaggio
+% Assemblaggio
 K_custom = Kp + I_action;
 
-% D. Filtro Passa-Basso a 80 rad/s
+% Filtro passa-basso a 80 rad/s
 wf = 80; 
 LPF_single = tf(wf, [1, wf]);
 LPF_matrix = blkdiag(LPF_single, LPF_single);
 
 K_struct = LPF_matrix * K_custom;
 
-% 4. OTTIMIZZAZIONE HINFSTRUCT
+% Ottimizzazione HINFSTRUCT
 CL0 = lft(P_gen_nom, K_struct);
 
 rng('default'); % Per riproducibilità
@@ -256,41 +256,41 @@ end
 %% =========================================================
 fprintf('\n=== Generazione Grafici di Bode Multipli ===\n');
 
-% 1. Vettore di frequenze
+% Vettore di frequenze
 w_vec = logspace(-1, 3, 1000); 
 
 % Modello passivo: impianto senza attuazione e senza retroazione
 G_passiva = Plant_nom(:, 'w_dist');
 
-% 3. Calcolo Matrici di Sensibilità e F.d.T. per TUTTI i controllori
+% Calcolo delle matrici di sensibilità e delle F.d.T. per tutti i controllori
 % (Convenzione reazione negativa: S = inv(I + G*K))
 
-% A. Controllore mixsyn (Full-Order)
+% Controllore mixsyn (Full-Order)
 S_mixsyn   = inv(eye(4) + G_uy * K_mixsyn);
 G_a_mixsyn = minreal(S_mixsyn * G_passiva);
 
-% B. Controllore hinfsyn (Full-Order)
+% Controllore hinfsyn (Full-Order)
 S_hinf   = inv(eye(4) + G_uy * K_hinf);
 G_a_hinf = minreal(S_hinf * G_passiva);
 
-% C. Controllore PI Strutturato (hinfstruct)
+% Controllore PI strutturato (hinfstruct)
 S_pid   = inv(eye(4) + G_uy * K_PID_tuned);
 G_a_pid = minreal(S_pid * G_passiva);
 
-% 4. Estrazione delle singole F.d.T
-% Comfort (Riga 1: w_in -> zs_ddot)
+% Estrazione delle singole F.d.T.
+% Comfort: primo canale di uscita, w_in -> zs_ddot
 G_p_comfort    = G_passiva(1, 1);
 G_mix_comfort  = G_a_mixsyn(1, 1);
 G_hinf_comfort = G_a_hinf(1, 1);
 G_pid_comfort  = G_a_pid(1, 1);
 
-% Tenuta di Strada (Riga 3: w_in -> delta_t)
+% Tenuta di strada: terzo canale di uscita, w_in -> delta_t
 G_p_tenuta    = G_passiva(3, 1);
 G_mix_tenuta  = G_a_mixsyn(3, 1);
 G_hinf_tenuta = G_a_hinf(3, 1);
 G_pid_tenuta  = G_a_pid(3, 1);
 
-% --- PLOT 1: COMFORT VIBRAZIONALE ---
+% --- COMFORT VIBRAZIONALE ---
 figure('Name', 'Bode - Confronto Controllori (Comfort)', 'Color', 'w');
 % mixsyn in rosso continuo, hinfsyn in blu tratteggiato sovrapposto, PI in verde
 bodemag(G_p_comfort, 'k--', G_mix_comfort, 'r', G_hinf_comfort, 'b:', G_pid_comfort, 'g', w_vec);
@@ -298,7 +298,7 @@ grid on;
 legend('Passiva', 'mixsyn (Full-Order)', 'hinfsyn (Full-Order)', 'PI Strutturato', 'Location', 'southwest');
 title('Amplificazione Disturbo: w_{in} \rightarrow Accelerazione Cassa (Comfort)');
 
-% --- PLOT 2: TENUTA DI STRADA ---
+% --- TENUTA DI STRADA ---
 figure('Name', 'Bode - Confronto Controllori (Tenuta)', 'Color', 'w');
 bodemag(G_p_tenuta, 'k--', G_mix_tenuta, 'r', G_hinf_tenuta, 'b:', G_pid_tenuta, 'g', w_vec);
 grid on;
