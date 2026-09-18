@@ -4,7 +4,7 @@
 fprintf('\n=== Generazione 15 Impianti Campionati (Monte Carlo) ===\n');
 
 % 1. Configurazione del Controllore
-K_test = -K_PID_tuned; 
+K_test = -K_red; 
 K_test.u = {'zs_ddot', 'delta_s', 'delta_t', 'zu_ddot'}; 
 K_test.y = {'u1_cmd', 'u2_cmd'};
 
@@ -67,11 +67,31 @@ legend([p_camp2, p_nom2], 'Location', 'best');
 
 fprintf('Grafici generati con successo.\n');
 
-% Calcolo RMS per dimostrare la robustezza
-rms_acc_campioni = zeros(1, num_campioni);
+% =========================================================
+% Calcolo Analitico RMS e Picchi (Dimostrazione di Robustezza)
+% =========================================================
+rms_acc_campioni     = zeros(1, num_campioni);
+rms_dt_campioni      = zeros(1, num_campioni);
+estensione_max_dt    = zeros(1, num_campioni);
+compressione_max_dt  = zeros(1, num_campioni);
+
 for i = 1:num_campioni
+    % Simulazione Comfort
     [y_acc, ~] = lsim(CL_campioni(1,1,i), w_in_noise, t_sim);
     rms_acc_campioni(i) = rms(y_acc);
+    
+    % Simulazione Tenuta di Strada
+    [y_dt, ~] = lsim(CL_campioni(3,1,i), w_in_noise, t_sim);
+    rms_dt_campioni(i)  = rms(y_dt);
+    estensione_max_dt(i)   = max(y_dt); % Picco Positivo (Rischio Lift-off se > 0.0218)
+    compressione_max_dt(i) = min(y_dt); % Picco Negativo (Schiacciamento)
 end
-fprintf('RMS Accelerazione Cassa (Min / Max sui 15 campioni): %.4f / %.4f m/s^2\n', ...
-    min(rms_acc_campioni), max(rms_acc_campioni));
+
+fprintf('\n--- RISULTATI MONTE CARLO SUI 15 IMPIANTI INCERTI ---\n');
+fprintf('COMFORT:\n');
+fprintf('  RMS Accelerazione       (Min / Max): %.4f / %.4f m/s^2\n', min(rms_acc_campioni), max(rms_acc_campioni));
+fprintf('TENUTA DI STRADA:\n');
+fprintf('  RMS Deformazione        (Min / Max): %.4f / %.4f m\n', min(rms_dt_campioni), max(rms_dt_campioni));
+fprintf('  Estensione Max (Lift-off) (Peggior Caso): %.4f m  <-- DEVE ESSERE < 0.0218 m\n', max(estensione_max_dt));
+fprintf('  Compressione Max        (Peggior Caso): %.4f m\n', min(compressione_max_dt));
+fprintf('-----------------------------------------------------\n\n');
