@@ -1,32 +1,30 @@
 %% =========================================================
 %  SINTESI ROBUSTA (mu-sintesi) - MIMO Quarter-Car
-% =========================================================
-% clear all; close all; clc;
-% 
-% %% 1. Caricamento Parametri e Impianto Incerto
-% % Richiamiamo gli script precedenti per avere P_esteso (uss) in workspace
-% run('A_quarter_car_parameters.m');
-% run('A_uncertain_Plant.m');
+% % =========================================================
+clear all; close all; clc;
+
+%% 1. Caricamento Parametri e Impianto Incerto
+% Richiamiamo gli script precedenti per avere P_esteso (uss) in workspace
+run('A_quarter_car_parameters.m');
+run('A_uncertain_Plant.m');
 
 s = tf('s');
 
 %% Definizione dei Pesi di Performance e Controllo
 
-
-% --- Pesi sulle Uscite (WP) ---
 % Comfort
 w_n = 6.5; zeta = 0.5; Gain = 10;
 wP1 = Gain * (2 * zeta * w_n * s) / (s^2 + 2 * zeta * w_n * s + w_n^2);
 %wP1 = 0.01;
 
-% Autolivellamento
-wP2 = 0.01; 
+% Autolivellamento: peso a bassa freq (quasi integratore) per schiacciare delta_s
+Gain_livellamento = 0.5;
+wP2 = Gain_livellamento / (s + 0.001);
 
 % Tenuta di Strada
 w_n_ruota = 63; zeta_ruota = 0.6; Gain_ruota = 1.5;
 filtro_ruota = Gain_ruota * (2 * zeta_ruota * w_n_ruota * s) / (s^2 + 2 * zeta_ruota * w_n_ruota * s + w_n_ruota^2);
 wP3 = 0.2 + filtro_ruota;
-%wP3 = 0.01;
 
 % Ruota
 wP4 = 0.01;
@@ -37,7 +35,7 @@ WP = tf(WP);
 WP.InputName  = {'zs_ddot', 'delta_s', 'delta_t', 'zu_ddot'};
 WP.OutputName = {'z_p1', 'z_p2', 'z_p3', 'z_p4'};
 
-% --- Pesi sugli Attuatori (Wu) ---
+% Pesi sugli Attuatori (Wu)
 wu_LF = 1/50000; wu_HF = 1/1000; w_taglio = 30;
 wu = wu_HF * (s + w_taglio * (wu_LF/wu_HF)) / (s + w_taglio);
 
@@ -55,7 +53,7 @@ Wn = tf(Wn);
 Wn.InputName = {'n1', 'n2', 'n3', 'n4'};
 Wn.OutputName = {'noise1', 'noise2', 'noise3', 'noise4'};
 
-% Sommiamo il rumore fittizio alle misurazioni (reazione negativa)
+% Somma rumore fittizio alle misurazioni (reazione negativa)
 Sv1 = sumblk('v1 = -zs_ddot - noise1');
 Sv2 = sumblk('v2 = -delta_s - noise2');
 Sv3 = sumblk('v3 = -delta_t - noise3');
@@ -112,8 +110,8 @@ title('Valori Singolari di Hankel (Importanza degli stati)');
 xlabel('Numero dello stato'); ylabel('Energia (Scala logaritmica)');
 grid on;
 
-% Scelta minimo ordine possibile: taglio a 14 stati (anche 13 va bene, però porta male).
-ordine_ridotto = 14; 
+% Scelta ordine ridotto
+ordine_ridotto = 16; 
 K_red = balred(K_rob, ordine_ridotto);
 
 fprintf('Controllore ridotto da %d a %d stati.\n', order(K_rob), order(K_red));
@@ -191,10 +189,6 @@ bodemag(G_p_tenuta, 'k--', G_rob_tenuta, 'r', G_red_tenuta, 'b:', w_vec);
 grid on;
 legend('Passiva', 'K\_rob (Full Order)', 'K\_red (Ridotto)', 'Location', 'southwest');
 title('Amplificazione Disturbo: w_{in} \rightarrow \delta_t (Tenuta di Strada)');
-
-
-
-
 
 
 

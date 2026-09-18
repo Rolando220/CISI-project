@@ -2,7 +2,7 @@
 clear x0_delta_s x0_zs_dot x0_delta_t x0_zu_dot;
 
 % --- IMPOSTAZIONI GENERALI ---
-nome_modello = 'quarter_car_MixedSensitivity'; 
+nome_modello = 'MixedSensitivity_quarter_car'; 
 tolleranza = 1e-3;       % Tolleranza errore a regime (1 mm)
 tempo_simulazione = 30;  % Tempo per smaltire il windup
 
