@@ -128,14 +128,9 @@ fprintf('Picco mu_RP (Controllore Ridotto (K_red) a %d stati): %.4f\n', ordine_r
 if perfmarg_red.LowerBound > 1
     fprintf('-> SUCCESSO: La Robust Performance e'' ANCORA GARANTITA (mu < 1)!\n');
 else
-    fprintf('-> ATTENZIONE: Abbiamo rimossi troppi stati, RP non più garantita (mu >= 1).\n');
+    fprintf('-> ATTENZIONE: Rimossi troppi stati, RP non più garantita (mu >= 1).\n');
 end
 fprintf('==============================================\n');
-
-
-
-
-
 
 
 %% ANALISI IN FREQUENZA (Bode - Passivo vs Robusto)
