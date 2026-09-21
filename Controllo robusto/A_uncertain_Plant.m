@@ -122,10 +122,7 @@ Actuator2_unc = G_a2_nom * (1 + W_L2 * Delta_L2);
 Actuator2_unc.InputName = 'u2_cmd';
 Actuator2_unc.OutputName = 'u2_force';
 
-%% INTERCONNESSIONE PER IMINTO GENERALIZZATO 
-% Sommiamo il rumore di misura alle uscite "pulite" del sistema (le accelerazioni)
-Sum_IMU1 = sumblk('y_imu1_meas = zs_ddot + n_sens');
-Sum_IMU2 = sumblk('y_imu2_meas = zu_ddot + n_sens');
+%% INTERCONNESSIONE PER IMPIANTO GENERALIZZATO 
 
 % Crezione Processo Esteso (N-Delta) connettendo tutti i blocchi
 % Input del sistema esteso: [w_in; u1_cmd; u2_cmd]
