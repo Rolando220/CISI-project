@@ -92,52 +92,60 @@ fprintf('\nGrafici generati con successo in un''unica finestra a schede!\n');
 %% FUNZIONI LOCALI DI SUPPORTO
 
 
+%% FUNZIONI LOCALI DI SUPPORTO
 function [Np, Np_unweighted, margini] = esegui_mu_analisi(K_ctrl, nome_ctrl, P_esteso, W_perf, omega)
     fprintf('\n---------------------------------------------------------\n');
     fprintf(' MU-ANALYSIS: %s \n', nome_ctrl);
     fprintf('---------------------------------------------------------\n');
-
+    
     % Chiusura Anello
     K_neg = -K_ctrl;
-    K_neg.u = {'zs_ddot', 'delta_s', 'delta_t', 'zu_ddot'}; 
+    if size(K_neg, 2) == 4
+        K_neg.u = {'zs_ddot', 'delta_s', 'delta_t', 'zu_ddot'}; 
+    else
+        K_neg.u = {'zs_ddot', 'delta_s', 'zu_ddot'}; 
+    end
     K_neg.y = {'u1_cmd', 'u2_cmd'};                             
+    
     Np_unweighted = connect(P_esteso, K_neg, {'w_in'}, {'zs_ddot', 'delta_s', 'delta_t', 'zu_ddot', 'u1_cmd', 'u2_cmd'});
     Np = W_perf * Np_unweighted;
-
+    
     % Nominal Stability (NS)
     N_nom = Np.NominalValue;
     poles_N = pole(N_nom);
     NS_ok = all(real(poles_N) < 0);
     fprintf(' NS: %s (Max Re(p) = %.4f)\n', ternary(NS_ok, 'OK', 'FAIL'), max(real(poles_N)));
-
+    
     % Nominal Performance (NP)
     muNPinf = max(max(sigma(N_nom, omega)));
     NP_ok = muNPinf < 1;
-    fprintf(' NP: %s (Picco = %.4f)\n', ternary(NP_ok, 'OK', 'FAIL'), muNPinf);
-
+    fprintf(' NP: %s (Picco mu = %.4f)\n', ternary(NP_ok, 'OK', 'FAIL'), muNPinf);
+    
     % Robust Stability (RS) con Sensibilità
-    opts_rob = robOptions('Display', 'off', 'Sensitivity', 'on'); % Attivata la sensibilità!
+    opts_rob = robOptions('Display', 'off', 'Sensitivity', 'on'); 
     [sm, ~, info_RS] = robstab(Np_unweighted, opts_rob);
-    RS_ok = sm.LowerBound > 1;
-    fprintf(' RS: %s (Margine = %.4f)\n', ternary(RS_ok, 'OK', 'FAIL'), sm.LowerBound);
+    mu_RS_val = 1 / sm.LowerBound; % Calcolo diretto di mu
+    RS_ok = mu_RS_val < 1;
+    fprintf(' RS: %s (Picco mu = %.4f)\n', ternary(RS_ok, 'OK', 'FAIL'), mu_RS_val);
     
     % Stampa della sensibilità
-    fprintf('     Sensibilità del margine alle singole incertezze:\n');
+    fprintf('     Sensibilità di mu alle singole incertezze:\n');
     disp(info_RS.Sensitivity);
-
+    
     % Robust Performance (RP)
     pm = robgain(Np, 1, robOptions('Display', 'off'));
-    RP_ok = pm.LowerBound >= 1;
-    fprintf(' RP: %s (Margine = %.4f)\n', ternary(RP_ok, 'OK', 'FAIL'), pm.LowerBound);
-
-    % Salvataggio margini per il summary
+    mu_RP_val = 1 / pm.LowerBound; % Calcolo diretto di mu
+    RP_ok = mu_RP_val < 1;
+    fprintf(' RP: %s (Picco mu = %.4f)\n', ternary(RP_ok, 'OK', 'FAIL'), mu_RP_val);
+    
+    % Salvataggio dati per il summary
     margini.NS = NS_ok;
     margini.NP = NP_ok; 
     margini.muNPinf = muNPinf;
     margini.RS = RS_ok; 
-    margini.RS_val = sm.LowerBound;
+    margini.muRSinf = mu_RS_val;
     margini.RP = RP_ok; 
-    margini.RP_val = pm.LowerBound;
+    margini.muRPinf = mu_RP_val;
 end
 
 function [mu_NP, mu_RS, mu_RP] = calcola_mu_frequenza(Np, Np_unw, omega)
@@ -145,7 +153,6 @@ function [mu_NP, mu_RS, mu_RP] = calcola_mu_frequenza(Np, Np_unw, omega)
     mu_RS = zeros(1, length(omega));
     mu_RP = zeros(1, length(omega));
     mu_NP = max(sigma(Np.NominalValue, omega), [], 1); 
-
     for i = 1:length(omega)
         sm = robstab(ufrd(Np_unw, omega(i)), opts_plot);
         pm = robgain(ufrd(Np, omega(i)), 1, opts_plot);
@@ -155,12 +162,12 @@ function [mu_NP, mu_RS, mu_RP] = calcola_mu_frequenza(Np, Np_unw, omega)
 end
 
 function stampa_summary(nome, m)
-    fprintf('%-18s | NS: %-4s | NP: %-4s (%.2f) | RS: %-4s (%.2f) | RP: %-4s (%.2f)\n', ...
+    fprintf('%-18s | NS: %-4s | NP: %-4s (mu=%.2f) | RS: %-4s (mu=%.2f) | RP: %-4s (mu=%.2f)\n', ...
         nome, ...
         ternary(m.NS, 'OK', 'FAIL'), ...
         ternary(m.NP, 'OK', 'FAIL'), m.muNPinf, ...
-        ternary(m.RS, 'OK', 'FAIL'), m.RS_val, ...
-        ternary(m.RP, 'OK', 'FAIL'), m.RP_val);
+        ternary(m.RS, 'OK', 'FAIL'), m.muRSinf, ...
+        ternary(m.RP, 'OK', 'FAIL'), m.muRPinf);
 end
 
 function s = ternary(cond, a, b)
