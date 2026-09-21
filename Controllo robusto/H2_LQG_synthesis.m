@@ -7,6 +7,8 @@ clear all; close all; clc;
 
 run('A_quarter_car_parameters.m');
 run('A_uncertain_Plant.m');
+P_esteso_nom = P_esteso.NominalValue;
+s = tf('s');
 
 %% Modello Linearizzato Quarter-Car
 
@@ -99,66 +101,68 @@ disp('Sintesi completata. Controllori K_LQG_noInt e K_LQG_Int pronti per Simulin
 
 
 
+%% 2. Costruzione Impianto Generalizzato per H2 (PESI COSTANTI E 3 MISURE)
 
-%% Sintesi H2 (Comfort e Road Holding)
-% Costruzione dell'Impianto Generalizzato P per h2syn.
-% Il vettore dei disturbi esogeni w viene aumentato per includere i rumori 
-% di misura sui sensori.
+% -- Pesi sulle Prestazioni (WP) - COSTANTI (Rimaniamo a 4 variabili da ottimizzare) --
+wP1 = 100;    % Peso su accelerazione cassa (zs_ddot) - Comfort
+wP2 = 10;     % Peso su autolivellamento (delta_s)
+wP3 = 1000;   % Peso su tenuta di strada (delta_t) - Vogliamo ottimizzarla anche se non la misuriamo!
+wP4 = 1;      % Peso su accelerazione ruota (zu_ddot)
 
-% Pesi di Performance (Comfort vs Road Holding) ---
-W_vel  = 2000;      % Comfort (zs_dot)
-W_defl = 1000;      % Tenuta di strada (delta_t)
+WP = diag([wP1, wP2, wP3, wP4]);
+WP = ss(WP);  
+WP.InputName  = {'zs_ddot', 'delta_s', 'delta_t', 'zu_ddot'};
+WP.OutputName = {'z_p1', 'z_p2', 'z_p3', 'z_p4'};
 
-% Pesi di controllo 
-W_u1   = 0.01;      
-W_u2   = 0.1;      
+% -- Pesi sullo Sforzo di Controllo (Wu) - COSTANTI --
+w_u1 = 0.1;
+w_u2 = 0.1;
 
-% Rumore virtuale sui sensori 
-W_n1 = 0.1;   % IMU cassa
-W_n2 = 0.01;  % LVDT
-W_n3 = 0.1;   % IMU ruota
+Wu = diag([w_u1, w_u2]);
+Wu = ss(Wu);
+Wu.InputName  = {'u1_cmd', 'u2_cmd'};
+Wu.OutputName = {'z_u1', 'z_u2'};
 
-% Matrici per le Uscite di Prestazione z 
-% Minimizza z = [W_vel*zs_dot; W_defl*delta_t; W_u1*u1; W_u2*u2]
-C_z = [ W_vel  * [0, 1, 0, 0];  % Estrae zs_dot (2° stato)
-        W_defl * [0, 0, 1, 0];  % Estrae delta_t (3° stato)
-        zeros(2, n) ];          % Spazio per le penalità di controllo u1, u2
-        
-% Nessun feedthrough diretto del disturbo stradale
-D_zw_strada = zeros(4, 1);
-                
-% Matrice comandi u
-D_zu = [ 0, 0;
-         0, 0;
-         W_u1, 0;
-         0, W_u2 ];
-         
-% Aumento del Disturbo w con i rumori di misura 
-B_w_aug = [B_w, zeros(n, p)];
-D_zw_aug = [D_zw_strada, zeros(4, p)]; 
-D_yw_aug = [D_yw, diag([W_n1, W_n2, W_n3])];
+% -- Rumore sui Sensori (Wn) - SOLO 3 SENSORI REALI --
+% Creiamo rumore solo per i 3 sensori che abbiamo in Simulink
+Wn = 0.01 * eye(3); 
+Wn = ss(Wn);
+Wn.InputName = {'n_zs', 'n_ds', 'n_zu'};
+Wn.OutputName = {'noise_zs', 'noise_ds', 'noise_zu'};
 
-% Costruzione Impianto Generalizzato P 
-A_P = A;
-B_P = [B_w_aug, B_u];
-C_P = [C_z; 
-       C_y];
-D_P = [D_zw_aug, D_zu;
-       D_yw_aug, D_yu];
-       
-P_sys = ss(A_P, B_P, C_P, D_P);
+% Nodi Sommatore (Retroazione negativa + Rumore)
+% Rimuoviamo Sv3 (quello relativo a delta_t)
+Sv_zs = sumblk('v_zs = -zs_ddot - noise_zs');
+Sv_ds = sumblk('v_ds = -delta_s - noise_ds');
+Sv_zu = sumblk('v_zu = -zu_ddot - noise_zu');
 
-% Sintesi del Controllore Ottimo H2 
-nmeas = p;  % numero uscite misurate y (le ultime 3 uscite di P_sys)
-ncont = m;  % numero comandi u (gli ultimi 2 ingressi di P_sys)
+% -- Interconnessione Finale (Impianto Generalizzato) --
+% Inseriamo solo i 3 rumori e le 3 uscite misurate (v_zs, v_ds, v_zu)
+P_gen_H2 = connect(P_esteso_nom, WP, Wu, Wn, Sv_zs, Sv_ds, Sv_zu, ...
+                   {'w_in', 'n_zs', 'n_ds', 'n_zu', 'u1_cmd', 'u2_cmd'}, ...
+                   {'z_p1','z_p2','z_p3','z_p4','z_u1','z_u2', 'v_zs', 'v_ds', 'v_zu'});
 
-[K_H2, CL_H2, gamma_H2] = h2syn(P_sys, nmeas, ncont);
+%% 3. Sintesi Ottima H2
+% P_gen_H2 ha ora:
+% Ingressi esogeni (w): 4  (w_in + 3 rumori n)
+% Ingressi controllo (u): 2 (u1_cmd, u2_cmd)
+% Uscite performance (z): 6 (4 prestazioni + 2 sforzi)
+% Uscite misurate (v): 3    (v_zs, v_ds, v_zu)
 
-% Rinomino I/O per facilitare l'uso del blocco in Simulink
+NMEAS = 3; % <-- Corretto: 3 sensori letti dal controllore
+NCONT = 2; % 2 attuatori comandati
+
+[K_H2, CL_H2, gamma_H2] = h2syn(P_gen_H2, NMEAS, NCONT);
+
+% Rinomino I/O del controllore per compatibilità esatta con i nomi di Simulink
 K_H2.InputName = {'zs_ddot', 'delta_s', 'zu_ddot'}; 
 K_H2.OutputName = {'u1_cmd', 'u2_cmd'};
 
+% Invertiamo il segno per il formato standard u = -K*y
+K_H2 = -K_H2; 
+
 disp(['Sintesi H2 completata. Norma H2 ottima (gamma): ', num2str(gamma_H2)]);
+
 
 
 
@@ -166,27 +170,22 @@ disp(['Sintesi H2 completata. Norma H2 ottima (gamma): ', num2str(gamma_H2)]);
 %% Analisi in Frequenza: Comfort e Tenuta di Strada
 disp('Generazione Grafici di Bode (Comfort e Tenuta di Strada)...');
 
-C_dt = [0, 0, 1, 0];
-D_dt_w = 0;
-D_dt_u = [0, 0];
+% 1. IMPIANTO PASSIVO 
+G_passiva = P_esteso_nom({'zs_ddot', 'delta_t'}, 'w_in');
 
-Sys_Eval = ss(A, [B_w, B_u], [C_y; C_dt], [D_yw, D_yu; D_dt_w, D_dt_u]);
-Sys_Eval.InputName  = {'w_dist', 'u1_cmd', 'u2_cmd'};
-Sys_Eval.OutputName = {'zs_ddot', 'delta_s', 'zu_ddot', 'delta_t'};
+% 2. COSTRUZIONE DEI SISTEMI AD ANELLO CHIUSO (COLLEGAMENTO DIRETTO)
+G_LQG = connect(P_esteso_nom, K_LQG_Int, 'w_in', {'zs_ddot', 'delta_t'});
+G_H2  = connect(P_esteso_nom, K_H2,      'w_in', {'zs_ddot', 'delta_t'});
 
-% Chiusura Anello di controllo (w_dist -> [zs_ddot, delta_t])
-G_passiva = Sys_Eval({'zs_ddot', 'delta_t'}, 'w_dist'); 
-G_LQG     = connect(Sys_Eval, K_LQG_Int, 'w_dist', {'zs_ddot', 'delta_t'});
-G_H2      = connect(Sys_Eval, K_H2, 'w_dist', {'zs_ddot', 'delta_t'});
 
 w_vec = logspace(-1, 3, 1000); % Vettore di frequenze comune
 
-% Comfort (w -> zs_ddot)
+% --- Comfort Vibrazionale (w_in -> zs_ddot) ---
 figure('Name', 'Bode - Comfort Vibrazionale', 'Color', 'w');
 bodemag(G_passiva(1,1), 'k--', G_LQG(1,1), 'b', G_H2(1,1), 'r', w_vec);
 grid on;
 legend('Passiva', 'Attiva (LQG Integrale)', 'Attiva (H_2)', 'Location', 'southwest');
-title('Amplificazione Disturbo Stradale: w \rightarrow zs\_ddot (Comfort)');
+title('Amplificazione Disturbo: w_{in} \rightarrow zs\_ddot (Comfort)');
 
 % Estrazione Dati Comfort
 [mag_p_c, ~, ~]   = bode(G_passiva(1,1), w_vec);
@@ -197,12 +196,12 @@ mag_p_c_dB   = 20*log10(squeeze(mag_p_c));
 mag_lqg_c_dB = 20*log10(squeeze(mag_lqg_c));
 mag_h2_c_dB  = 20*log10(squeeze(mag_h2_c));
 
-% Tenuta di strada (w -> delta_t)
+% --- Tenuta di strada (w_in -> delta_t) ---
 figure('Name', 'Bode - Tenuta di Strada', 'Color', 'w');
 bodemag(G_passiva(2,1), 'k--', G_LQG(2,1), 'b', G_H2(2,1), 'r', w_vec);
 grid on;
 legend('Passiva', 'Attiva (LQG Integrale)', 'Attiva (H_2)', 'Location', 'southwest');
-title('Amplificazione Disturbo Stradale: w \rightarrow \delta_t (Tenuta di Strada)');
+title('Amplificazione Disturbo: w_{in} \rightarrow \delta_t (Tenuta di Strada)');
 
 % Estrazione Dati Tenuta di Strada
 [mag_p_t, ~, ~]   = bode(G_passiva(2,1), w_vec);
@@ -213,7 +212,7 @@ mag_p_t_dB   = 20*log10(squeeze(mag_p_t));
 mag_lqg_t_dB = 20*log10(squeeze(mag_lqg_t));
 mag_h2_t_dB  = 20*log10(squeeze(mag_h2_t));
 
-% Calcolo Risultati 
+% --- Calcolo Risultati e Attenuazioni ---
 % Ricerca indici di picco (Cassa: 4-15 rad/s | Ruota: 40-80 rad/s)
 idx_cassa = find(w_vec > 4 & w_vec < 15);
 idx_ruota = find(w_vec > 40 & w_vec < 80);
@@ -230,7 +229,7 @@ disp('   ANALISI FREQUENZIALE: ATTENUAZIONE RISPETTO AL PASSIVO');
 disp('   (Valori positivi = Miglioramento | Valori negativi = Peggioramento)');
 disp('=================================================================');
 
-disp('--- 1. COMFORT VIBRAZIONALE (w -> zs_ddot) ---');
+disp('--- 1. COMFORT VIBRAZIONALE (w_in -> zs_ddot) ---');
 disp(['> Picco Cassa a ', num2str(w_vec(peak_c_cassa), '%.2f'), ' rad/s:']);
 disp(['     Attenuazione LQG: ', num2str(mag_p_c_dB(peak_c_cassa) - mag_lqg_c_dB(peak_c_cassa), '%+0.2f'), ' dB']);
 disp(['     Attenuazione H2 : ', num2str(mag_p_c_dB(peak_c_cassa) - mag_h2_c_dB(peak_c_cassa), '%+0.2f'), ' dB']);
@@ -239,7 +238,7 @@ disp(['     Attenuazione LQG: ', num2str(mag_p_c_dB(peak_c_ruota) - mag_lqg_c_dB
 disp(['     Attenuazione H2 : ', num2str(mag_p_c_dB(peak_c_ruota) - mag_h2_c_dB(peak_c_ruota), '%+0.2f'), ' dB']);
 disp(' ');
 
-disp('--- 2. TENUTA DI STRADA (w -> delta_t) ---');
+disp('--- 2. TENUTA DI STRADA (w_in -> delta_t) ---');
 disp(['> Picco Cassa a ', num2str(w_vec(peak_t_cassa), '%.2f'), ' rad/s:']);
 disp(['     Attenuazione LQG: ', num2str(mag_p_t_dB(peak_t_cassa) - mag_lqg_t_dB(peak_t_cassa), '%+0.2f'), ' dB']);
 disp(['     Attenuazione H2 : ', num2str(mag_p_t_dB(peak_t_cassa) - mag_h2_t_dB(peak_t_cassa), '%+0.2f'), ' dB']);

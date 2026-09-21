@@ -14,7 +14,7 @@ tau_2_array = linspace(tau_2_nom*0.8, tau_2_nom*1.2, 10);
 G_a1_array = tf(zeros(1,1,10));
 G_a2_array = tf(zeros(1,1,10));
 
-% Popolamentocarray con modelli perturbati (usando Padé 1° ordine)
+% Popolamento array con modelli perturbati (usando Padé 1° ordine)
 for i = 1:10
     Pade1 = (1 - (tau_1_array(i)/2)*s) / (1 + (tau_1_array(i)/2)*s);
     Pade2 = (1 - (tau_2_array(i)/2)*s) / (1 + (tau_2_array(i)/2)*s);
@@ -103,7 +103,7 @@ Plant_unc.OutputName = {'zs_ddot', 'delta_s', 'delta_t', 'zu_ddot'};
 % Peso sul Disturbo Stradale (Gd)
 % Il profilo stradale ha energia a bassa frequenza. 
 % Low-Pass Filter (LPF) 
-G_d = 0.1 / (s/(2*pi*5) + 1); % Frequenza di taglio a 5 Hz (~30 rad/s)
+G_d = 1 / (s/(2*pi*5) + 1); % Frequenza di taglio a 5 Hz (~30 rad/s)
 G_d.InputName = 'w_in';       % Ingresso Rumore Bianco 
 G_d.OutputName = 'w_dist';    % Uscita fisica (velocità della strada che entra nel Plant)
 

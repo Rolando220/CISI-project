@@ -12,7 +12,7 @@ s = tf('s');
 %% Definizione dei Pesi di Performance e Controllo
 
 % Comfort
-w_n = 6.5; zeta = 0.5; Gain = 10;
+w_n = 6.5; zeta = 0.5; Gain = 1.5;
 wP1 = Gain * (2 * zeta * w_n * s) / (s^2 + 2 * zeta * w_n * s + w_n^2);
 %wP1 = 0.01;
 
