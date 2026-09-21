@@ -1,10 +1,10 @@
-%% Mixed-Sensitivity H-infinity Synthesis: MIMO Quarter-Car
-%
-% Design objective: minimize ||[WP*S; Wu*KS]||_inf < gamma
+%   =========================================================
+%     MIXED-SENSITIVITY H-INFINITY SYNTHESIS: QUARTER-CAR 
+%       minimize ||[WP*S ; WT*T ; Wu*KS]||_inf < gamma
+%   =========================================================
 
+%% Caricamento Parametri e Impianto Incerto
 clear all; close all; clc;
-
-% --- CARICAMENTO PARAMETRI E CREAZIONE IMPIANTO INCERTO ---
 run('A_quarter_car_parameters.m');
 run('A_uncertain_Plant.m');
 
@@ -95,7 +95,6 @@ Wu = blkdiag(wu, wu);
 
 % Nessun peso esplicito sulla sensibilità complementare: la sintesi mixsyn
 % considera quindi solo il peso di prestazione e quello dello sforzo.
-
 WT = [];
 
 %% Costruzione del modello nominale e dell'impianto generalizzato

@@ -1,10 +1,9 @@
-%% =========================================================
-%  SINTESI ROBUSTA (mu-sintesi) - MIMO Quarter-Car
-% % =========================================================
-clear all; close all; clc;
+%   =========================================================
+%       SINTESI ROBUSTA (mu-sintesi) - MIMO Quarter-Car
+%   =========================================================
 
-%% 1. Caricamento Parametri e Impianto Incerto
-% Richiamiamo gli script precedenti per avere P_esteso (uss) in workspace
+%% Caricamento Parametri e Impianto Incerto
+clear all; close all; clc;
 run('A_quarter_car_parameters.m');
 run('A_uncertain_Plant.m');
 

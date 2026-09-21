@@ -8,11 +8,11 @@ dt_pass = squeeze(out.delta_t_passivo.Data);
 ds_pass = squeeze(out.delta_s_passivo.Data);
 
 % Dati LQG BASE (Senza Integratore)
-zs_noInt = squeeze(out.zs_ddot_noInt.Data);
-dt_noInt = squeeze(out.delta_t_noInt.Data);
-ds_noInt = squeeze(out.delta_s_noInt.Data);
-u1_noInt = squeeze(out.u1_noInt.Data);
-u2_noInt = squeeze(out.u2_noInt.Data);
+zs_noInt = squeeze(out.zs_ddot_H2.Data);
+dt_noInt = squeeze(out.delta_t_H2.Data);
+ds_noInt = squeeze(out.delta_s_H2.Data);
+u1_noInt = squeeze(out.u1_H2.Data);
+u2_noInt = squeeze(out.u2_H2.Data);
 
 % Dati LQG INTEGRALE
 zs_Int = squeeze(out.zs_ddot_Int.Data);

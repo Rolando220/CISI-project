@@ -6,16 +6,10 @@ clc
 
 parameters.m_s = 350;
 parameters.m_u = 50;
-%parameters.ks0 = 20000;
 parameters.ks0 = 15000;
-%parameters.ks0 = 16000;
 parameters.alpha = 10^5;
-%parameters.bs = 1500;
 parameters.bs = 800; 
-%parameters.bs = 1000; 
 parameters.kt = 180000;
-%parameters.kt=140000;
-%parameters.kt=150000;
 parameters.bt = 150;
 
 parameters.omega_n1 = 80;       

@@ -1,4 +1,14 @@
-%% Sintesi Controllo LQG e H2
+%   =========================================================
+%              H2 ( & LQG )  SYNTHESIS: QUARTER-CAR 
+%   =========================================================
+
+%% Caricamento Parametri e Impianto Incerto
+clear all; close all; clc;
+
+run('A_quarter_car_parameters.m');
+run('A_uncertain_Plant.m');
+
+%% Modello Linearizzato Quarter-Car
 
 % Estrazione parametri 
 m_s = parameters.m_s;
@@ -8,7 +18,6 @@ bs  = parameters.bs;
 kt  = parameters.kt;
 bt  = parameters.bt;
 
-%% Modello Linearizzato Quarter-Car
 % Stati x = [delta_s; zs_dot; delta_t; zu_dot]
 A = [ 0,            1,          0,           -1;
      -ks0/m_s,     -bs/m_s,     0,            bs/m_s;
