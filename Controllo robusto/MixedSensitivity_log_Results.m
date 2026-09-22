@@ -45,6 +45,8 @@ u2_all    = [u2_pas, u2_mix, u2_hinf, u2_pid];
 % Inizializzazione
 rms_acc = zeros(1,4); max_acc = zeros(1,4);
 rms_dt  = zeros(1,4); max_dt  = zeros(1,4);
+var_acc = zeros(1,4); 
+var_dt  = zeros(1,4);
 e_ss_ds = zeros(1,4); 
 t_assest_ds  = zeros(1,4); % Tempo assestamento corsa (Autolivellamento)
 t_assest_acc = zeros(1,4); % Tempo assestamento accelerazione (Comfort)
@@ -58,6 +60,7 @@ banda_assest_acc = 0.05 * max(abs(zs_ddot_pas));
 for i = 1:4
     % Metriche Comfort
     rms_acc(i) = sqrt(mean(acc_all(:, i).^2));
+    var_acc(i) = var(acc_all(:, i));
     max_acc(i) = max(abs(acc_all(:, i)));
     
     % Tempo di assestamento al 5% (Comfort - Accelerazione)
@@ -70,6 +73,7 @@ for i = 1:4
     
     % Metriche Tenuta di strada
     rms_dt(i) = sqrt(mean(dt_all(:, i).^2));
+    var_dt(i) = var(dt_all(:, i));
     max_dt(i) = max(abs(dt_all(:, i)));
     
     % Metriche Autolivellamento
@@ -99,11 +103,13 @@ fprintf('METRICA                      | Passivo (Base) | H-inf (mixsyn) | H-inf 
 fprintf('-----------------------------|----------------|----------------|-----------------|-----------------|\n');
 fprintf('COMFORT\n');
 fprintf('RMS Accelerazione [m/s^2]    | %14.4f | %14.4f | %15.4f | %15.4f |\n', rms_acc(1), rms_acc(2), rms_acc(3), rms_acc(4));
+fprintf('Varianza Accel. [(m/s^2)^2]  | %14.4f | %14.4f | %15.4f | %15.4f |\n', var_acc(1), var_acc(2), var_acc(3), var_acc(4));
 fprintf('Picco Accelerazione [m/s^2]  | %14.4f | %14.4f | %15.4f | %15.4f |\n', max_acc(1), max_acc(2), max_acc(3), max_acc(4));
 fprintf('Tempo Assest. 5%% (Accel.)[s] | %14.2f | %14.2f | %15.2f | %15.2f |\n', t_assest_acc(1), t_assest_acc(2), t_assest_acc(3), t_assest_acc(4));
 fprintf('-----------------------------|----------------|----------------|-----------------|-----------------|\n');
 fprintf('TENUTA DI STRADA\n');
 fprintf('RMS Deformazione Gomma [m]   | %14.4f | %14.4f | %15.4f | %15.4f |\n', rms_dt(1), rms_dt(2), rms_dt(3), rms_dt(4));
+fprintf('Varianza Deform. Gomma [m^2] | %14.6f | %14.6f | %15.6f | %15.6f |\n', var_dt(1), var_dt(2), var_dt(3), var_dt(4));
 fprintf('Picco Deformaz. Gomma [m]    | %14.4f | %14.4f | %15.4f | %15.4f |\n', max_dt(1), max_dt(2), max_dt(3), max_dt(4));
 fprintf('-----------------------------|----------------|----------------|-----------------|-----------------|\n');
 fprintf('AUTOLIVELLAMENTO\n');

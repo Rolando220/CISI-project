@@ -21,9 +21,9 @@ Gain_livellamento = 0.5;
 wP2 = Gain_livellamento / (s + 0.001);
 
 % Tenuta di Strada
-w_n_ruota = 63; zeta_ruota = 0.6; Gain_ruota = 1.5;
+w_n_ruota = 63; zeta_ruota = 0.6; Gain_ruota = 1.2;
 filtro_ruota = Gain_ruota * (2 * zeta_ruota * w_n_ruota * s) / (s^2 + 2 * zeta_ruota * w_n_ruota * s + w_n_ruota^2);
-wP3 = 0.2 + filtro_ruota;
+wP3 = 0.1 + filtro_ruota;
 
 % Ruota
 wP4 = 0.01;
@@ -46,32 +46,30 @@ Wu.OutputName = {'z_u1', 'z_u2'};
 
 %% Nodi Sommatore per le Misure e RUMORE FITTIZIO
 
-% 4 rumori indipendenti 
-Wn = 0.01 * eye(4); 
+% 3 rumori indipendenti 
+Wn = 0.01 * eye(3); 
 Wn = tf(Wn);
-Wn.InputName = {'n1', 'n2', 'n3', 'n4'};
-Wn.OutputName = {'noise1', 'noise2', 'noise3', 'noise4'};
+Wn.InputName = {'n_zs', 'n_ds', 'n_zu'};
+Wn.OutputName = {'noise_zs', 'noise_ds', 'noise_zu'};
 
 % Somma rumore fittizio alle misurazioni (reazione negativa)
-Sv1 = sumblk('v1 = -zs_ddot - noise1');
-Sv2 = sumblk('v2 = -delta_s - noise2');
-Sv3 = sumblk('v3 = -delta_t - noise3');
-Sv4 = sumblk('v4 = -zu_ddot - noise4');
+Sv_zs = sumblk('v_zs = -zs_ddot - noise_zs');
+Sv_ds = sumblk('v_ds = -delta_s - noise_ds');
+Sv_zu = sumblk('v_zu = -zu_ddot - noise_zu');
 
 %% Costruzione Impianto Generalizzato Incerto
-P_gen_unc = connect(P_esteso, WP, Wu, Wn, Sv1, Sv2, Sv3, Sv4, ...
-                     {'w_in', 'n1', 'n2', 'n3', 'n4', 'u1_cmd', 'u2_cmd'}, ...
-                     {'z_p1','z_p2','z_p3','z_p4','z_u1','z_u2','v1','v2','v3','v4'});
-
+P_gen_unc = connect(P_esteso, WP, Wu, Wn, Sv_zs, Sv_ds, Sv_zu, ...
+                     {'w_in', 'n_zs', 'n_ds', 'n_zu', 'u1_cmd', 'u2_cmd'}, ...
+                     {'z_p1','z_p2','z_p3','z_p4','z_u1','z_u2','v_zs','v_ds','v_zu'});
 
 
 %% SINTESI H-INFINITY ROBUSTA (D-K Iteration via musyn)
 % P_gen_unc ha 10 uscite (le prime 6 sono z, le ultime 4 sono v)
 % e 3 ingressi (il primo è w_in, gli ultimi 2 sono u1_cmd, u2_cmd)
-% NMEAS = numero di misure (v) lette dal controllore = 4
+% NMEAS = numero di misure (v) lette dal controllore = 3
 % NCONT = numero di segnali di controllo (u) inviati agli attuatori = 2
 
-NMEAS = 4;
+NMEAS = 3;
 NCONT = 2;
 
 fprintf('\nAvvio della mu-sintesi (D-K iteration)...\n');
@@ -81,6 +79,9 @@ fprintf('\nAvvio della mu-sintesi (D-K iteration)...\n');
 opts_musyn = musynOptions('Display','short', 'MixedMU','on', 'MaxIter',10, 'TolPerf',0.01);
 
 [K_rob, CLperf, info_mu] = musyn(P_gen_unc, NMEAS, NCONT, opts_musyn);
+
+K_rob.InputName = {'zs_ddot', 'delta_s', 'zu_ddot'};
+K_rob.OutputName = {'u1_cmd', 'u2_cmd'};
 
 fprintf('\n=== Risultati della mu-sintesi ===\n');
 fprintf('Ordine del controllore K_rob: %d\n', order(K_rob));
@@ -110,8 +111,11 @@ xlabel('Numero dello stato'); ylabel('Energia (Scala logaritmica)');
 grid on;
 
 % Scelta ordine ridotto
-ordine_ridotto = 16; 
+ordine_ridotto = 21; 
 K_red = balred(K_rob, ordine_ridotto);
+
+K_red.InputName = {'zs_ddot', 'delta_s', 'zu_ddot'};
+K_red.OutputName = {'u1_cmd', 'u2_cmd'};
 
 fprintf('Controllore ridotto da %d a %d stati.\n', order(K_rob), order(K_red));
 
@@ -135,40 +139,29 @@ fprintf('==============================================\n');
 
 %% ANALISI IN FREQUENZA (Bode - Passivo vs Robusto)
 fprintf('\n=== Generazione Grafici di Bode (Analisi Fisica) ===\n');
-
 % Vettore di frequenze
 w_vec = logspace(-1, 3, 1000); 
 
 % Impianto nominale 
 Plant_nominale = P_esteso.NominalValue;
 
-% G_passiva: w_in -> [zs_ddot, delta_s, delta_t, zu_ddot]
-G_passiva = Plant_nominale(:, 'w_in');
+% F.d.T. Passiva (solo da w_in a comfort e tenuta per i plot)
+G_passiva = Plant_nominale({'zs_ddot', 'delta_t'}, 'w_in');
 
-% G_uy: [u1_cmd, u2_cmd] -> [zs_ddot, delta_s, delta_t, zu_ddot]
-G_uy = Plant_nominale(:, {'u1_cmd', 'u2_cmd'});
-
-% Calcolo Matrici di Sensibilità (S = inv(I + G*K))
-
-% Controllore Full-Order (K_rob)
-S_rob   = inv(eye(4) + G_uy * K_rob);
-G_a_rob = minreal(S_rob * G_passiva , [],false);
-
-% Controllore Ridotto (K_red)
-S_red   = inv(eye(4) + G_uy * K_red);
-G_a_red = minreal(S_red * G_passiva, [],false);
+% Connessione a ciclo chiuso tramite connect (gestisce automaticamente le 3 misure)
+G_a_rob = connect(Plant_nominale, -K_rob, 'w_in', {'zs_ddot', 'delta_t'});
+G_a_red = connect(Plant_nominale, -K_red, 'w_in', {'zs_ddot', 'delta_t'});
 
 % Estrazione delle singole Funzioni di Trasferimento
-
-% Comfort (Riga 1: w_in -> zs_ddot)
+% Comfort (Canale 1: w_in -> zs_ddot)
 G_p_comfort   = G_passiva(1, 1);
 G_rob_comfort = G_a_rob(1, 1);
 G_red_comfort = G_a_red(1, 1);
 
-% Tenuta di Strada (Riga 3: w_in -> delta_t)
-G_p_tenuta   = G_passiva(3, 1);
-G_rob_tenuta = G_a_rob(3, 1);
-G_red_tenuta = G_a_red(3, 1);
+% Tenuta di Strada (Canale 2: w_in -> delta_t)
+G_p_tenuta   = G_passiva(2, 1);
+G_rob_tenuta = G_a_rob(2, 1);
+G_red_tenuta = G_a_red(2, 1);
 
 % --- PLOT 1: COMFORT VIBRAZIONALE ---
 figure('Name', 'Bode - Comfort Vibrazionale', 'Color', 'w');
@@ -183,7 +176,6 @@ bodemag(G_p_tenuta, 'k--', G_rob_tenuta, 'r', G_red_tenuta, 'b:', w_vec);
 grid on;
 legend('Passiva', 'K\_rob (Full Order)', 'K\_red (Ridotto)', 'Location', 'southwest');
 title('Amplificazione Disturbo: w_{in} \rightarrow \delta_t (Tenuta di Strada)');
-
 
 
 %% MU-ANALISI (NP, RS, RP)
@@ -248,15 +240,15 @@ function [Np, Np_unweighted, margini] = esegui_mu_analisi(K_ctrl, nome_ctrl, P_e
     fprintf(' MU-ANALYSIS: %s \n', nome_ctrl);
     fprintf('---------------------------------------------------------\n');
     
-    % Chiusura Anello
     K_neg = -K_ctrl;
-    K_neg.u = {'zs_ddot', 'delta_s', 'delta_t', 'zu_ddot'}; 
+    if size(K_neg, 2) == 4
+        K_neg.u = {'zs_ddot', 'delta_s', 'delta_t', 'zu_ddot'}; 
+    else
+        K_neg.u = {'zs_ddot', 'delta_s', 'zu_ddot'}; 
+    end
     K_neg.y = {'u1_cmd', 'u2_cmd'};                             
     
-    % Creazione Np_unweighted (senza pesi di performance) per l'analisi di stabilità
     Np_unweighted = connect(P_esteso, K_neg, {'w_in'}, {'zs_ddot', 'delta_s', 'delta_t', 'zu_ddot', 'u1_cmd', 'u2_cmd'});
-    
-    % Applicazione pesi di performance per creare Np
     Np = W_perf * Np_unweighted;
     
     % Nominal Stability (NS)
@@ -268,30 +260,32 @@ function [Np, Np_unweighted, margini] = esegui_mu_analisi(K_ctrl, nome_ctrl, P_e
     % Nominal Performance (NP)
     muNPinf = max(max(sigma(N_nom, omega)));
     NP_ok = muNPinf < 1;
-    fprintf(' NP: %s (Picco = %.4f)\n', ternary(NP_ok, 'OK', 'FAIL'), muNPinf);
+    fprintf(' NP: %s (Picco mu = %.4f)\n', ternary(NP_ok, 'OK', 'FAIL'), muNPinf);
     
-    % Robust Stability (RS) con Sensibilità
+    % Robust Stability (RS)
     opts_rob = robOptions('Display', 'off', 'Sensitivity', 'on'); 
     [sm, ~, info_RS] = robstab(Np_unweighted, opts_rob);
-    RS_ok = sm.LowerBound > 1;
-    fprintf(' RS: %s (Margine = %.4f)\n', ternary(RS_ok, 'OK', 'FAIL'), sm.LowerBound);
+    mu_RS_val = 1 / sm.LowerBound;
+    RS_ok = mu_RS_val < 1;
+    fprintf(' RS: %s (Picco mu = %.4f)\n', ternary(RS_ok, 'OK', 'FAIL'), mu_RS_val);
     
-    fprintf('     Sensibilità del margine alle singole incertezze:\n');
+    fprintf('     Sensibilita'' di mu alle singole incertezze:\n');
     disp(info_RS.Sensitivity);
     
     % Robust Performance (RP)
     pm = robgain(Np, 1, robOptions('Display', 'off'));
-    RP_ok = pm.LowerBound >= 1;
-    fprintf(' RP: %s (Margine = %.4f)\n', ternary(RP_ok, 'OK', 'FAIL'), pm.LowerBound);
+    mu_RP_val = 1 / pm.LowerBound;
+    RP_ok = mu_RP_val < 1;
+    fprintf(' RP: %s (Picco mu = %.4f)\n', ternary(RP_ok, 'OK', 'FAIL'), mu_RP_val);
     
     % Salvataggio margini per il summary
     margini.NS = NS_ok;
     margini.NP = NP_ok; 
     margini.muNPinf = muNPinf;
     margini.RS = RS_ok; 
-    margini.RS_val = sm.LowerBound;
+    margini.muRSinf = mu_RS_val;
     margini.RP = RP_ok; 
-    margini.RP_val = pm.LowerBound;
+    margini.muRPinf = mu_RP_val;
 end
 
 function [mu_NP, mu_RS, mu_RP] = calcola_mu_frequenza(Np, Np_unw, omega)
@@ -309,12 +303,12 @@ function [mu_NP, mu_RS, mu_RP] = calcola_mu_frequenza(Np, Np_unw, omega)
 end
 
 function stampa_summary(nome, m)
-    fprintf('%-18s | NS: %-4s | NP: %-4s (%.2f) | RS: %-4s (%.2f) | RP: %-4s (%.2f)\n', ...
+    fprintf('%-18s | NS: %-4s | NP: %-4s (mu=%.2f) | RS: %-4s (mu=%.2f) | RP: %-4s (mu=%.2f)\n', ...
         nome, ...
         ternary(m.NS, 'OK', 'FAIL'), ...
         ternary(m.NP, 'OK', 'FAIL'), m.muNPinf, ...
-        ternary(m.RS, 'OK', 'FAIL'), m.RS_val, ...
-        ternary(m.RP, 'OK', 'FAIL'), m.RP_val);
+        ternary(m.RS, 'OK', 'FAIL'), m.muRSinf, ...
+        ternary(m.RP, 'OK', 'FAIL'), m.muRPinf);
 end
 
 function s = ternary(cond, a, b)

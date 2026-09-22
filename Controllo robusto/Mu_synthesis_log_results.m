@@ -60,15 +60,15 @@ fprintf('=======================================================================
 
 % COMFORT
 fprintf('--- COMFORT (Accelerazione zs_ddot) [Target Max < 2.5 m/s^2] ---\n');
-fprintf('  PASSIVO     -> RMS: %.4f m/s^2 | Max: %+.4f | Min: %+.4f\n', rms(zs_pass), max(zs_pass), min(zs_pass));
-fprintf('  K_rob.      -> RMS: %.4f m/s^2 | Max: %+.4f | Min: %+.4f\n', rms(zs_krob), max(zs_krob), min(zs_krob));
-fprintf('  K_red       -> RMS: %.4f m/s^2 | Max: %+.4f | Min: %+.4f\n\n', rms(zs_kred), max(zs_kred), min(zs_kred));
+fprintf('  PASSIVO     -> Varianza: %.4f | RMS: %.4f m/s^2 | Max: %+.4f | Min: %+.4f\n', var(zs_pass), rms(zs_pass), max(zs_pass), min(zs_pass));
+fprintf('  K_rob       -> Varianza: %.4f | RMS: %.4f m/s^2 | Max: %+.4f | Min: %+.4f\n', var(zs_krob), rms(zs_krob), max(zs_krob), min(zs_krob));
+fprintf('  K_red       -> Varianza: %.4f | RMS: %.4f m/s^2 | Max: %+.4f | Min: %+.4f\n\n', var(zs_kred), rms(zs_kred), max(zs_kred), min(zs_kred));
 
 % ROAD HOLDING
 fprintf('--- ROAD HOLDING (Deformazione delta_t) [Target Limite < 0.02 m] ---\n');
-fprintf('  PASSIVO     -> RMS: %.5f m | Max: %+.5f | Min: %+.5f\n', rms(dt_pass), max(dt_pass), min(dt_pass));
-fprintf('  K_rob       -> RMS: %.5f m | Max: %+.5f | Min: %+.5f\n', rms(dt_krob), max(dt_krob), min(dt_krob));
-fprintf('  K_red       -> RMS: %.5f m | Max: %+.5f | Min: %+.5f\n\n', rms(dt_kred), max(dt_kred), min(dt_kred));
+fprintf('  PASSIVO     -> Varianza: %.6f | RMS: %.5f m | Max: %+.5f | Min: %+.5f\n', var(dt_pass), rms(dt_pass), max(dt_pass), min(dt_pass));
+fprintf('  K_rob       -> Varianza: %.6f | RMS: %.5f m | Max: %+.5f | Min: %+.5f\n', var(dt_krob), rms(dt_krob), max(dt_krob), min(dt_krob));
+fprintf('  K_red       -> Varianza: %.6f | RMS: %.5f m | Max: %+.5f | Min: %+.5f\n\n', var(dt_kred), rms(dt_kred), max(dt_kred), min(dt_kred));
 
 % CORSA SOSPENSIONE
 fprintf('--- CORSA SOSPENSIONE (delta_s) [Target Fine Corsa +/- 0.08 m] ---\n');
