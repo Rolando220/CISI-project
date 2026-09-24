@@ -24,8 +24,8 @@ u2_mix      = squeeze(out.u2_mixsyn.Data);      u2_mix = u2_mix(:);
 zs_ddot_hinf = squeeze(out.zs_ddot_hinf.Data);  zs_ddot_hinf = zs_ddot_hinf(:);
 delta_s_hinf = squeeze(out.delta_s_hinf.Data);  delta_s_hinf = delta_s_hinf(:);
 delta_t_hinf = squeeze(out.delta_t_hinf.Data);  delta_t_hinf = delta_t_hinf(:);
-u1_hinf      = squeeze(out.u1__hinf.Data);      u1_hinf = u1_hinf(:);
-u2_hinf      = squeeze(out.u2__hinf.Data);      u2_hinf = u2_hinf(:);
+u1_hinf      = squeeze(out.u1_hinf.Data);      u1_hinf = u1_hinf(:);
+u2_hinf      = squeeze(out.u2_hinf.Data);      u2_hinf = u2_hinf(:);
 
 % --- H-infinity Strutturato (PID Filtrato) ---
 zs_ddot_pid = squeeze(out.zs_ddot_PID.Data);    zs_ddot_pid = zs_ddot_pid(:);
@@ -120,6 +120,7 @@ fprintf('SFORZO ATTUATORI\n');
 fprintf('Picco Sforzo (U1) [N]        | %14.1f | %14.1f | %15.1f | %15.1f |\n', max_u1(1), max_u1(2), max_u1(3), max_u1(4));
 fprintf('RMS Sforzo U1 (Energia) [N]  | %14.1f | %14.1f | %15.1f | %15.1f |\n', rms_u1(1), rms_u1(2), rms_u1(3), rms_u1(4));
 fprintf('Picco Sforzo (U2) [N]        | %14.1f | %14.1f | %15.1f | %15.1f |\n', max_u2(1), max_u2(2), max_u2(3), max_u2(4));
+fprintf('RMS Sforzo U2 (Energia) [N]  | %14.1f | %14.1f | %15.1f | %15.1f |\n', rms_u2(1), rms_u2(2), rms_u2(3), rms_u2(4));
 fprintf('=================================================================================================\n');
 %% 4. PLOT GRAFICI (Organizzati per il Report)
 
